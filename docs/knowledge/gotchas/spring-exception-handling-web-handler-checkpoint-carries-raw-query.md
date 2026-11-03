@@ -4,7 +4,7 @@ type: gotcha
 title: Spring 7's ExceptionHandlingWebHandler attaches a Reactor checkpoint with the raw query string to every error, as a suppressed exception
 status: active
 tags: [spring, webflux, reactor, logging, errors, privacy]
-related: [bugs/mapper-error-log-carries-raw-query-via-reactor-checkpoint, bugs/committed-response-error-logged-twice-with-query-string, systems/request-context-and-errors]
+related: [bugs/mapper-error-log-carries-raw-query-via-reactor-checkpoint, gotchas/reactor-checkpoint-truncates-error-stack-to-first-frame, bugs/committed-response-error-logged-twice-with-query-string, systems/request-context-and-errors]
 created: 2026-11-03
 updated: 2026-11-03
 source_files:
@@ -30,11 +30,15 @@ In Spring Framework 7.0.10 (Reactor 3.8.8), every exception that reaches a `WebE
   ```
 
   The error is resumed before `.block()` on purpose: `.block()` on an erroring `Mono` adds its own suppressed exception (`#block terminated with an error`) to the thrown error, which would muddy the observation.
-- `LoggableFailureTest:12-30` runs this reproduction with `HTTP GET "/v1/x?secret=1"` and asserts the checkpoint is attached (`:21`) before checking the copy.
+- `LoggableFailureTest:12-34` runs this reproduction with `HTTP GET "/v1/x?secret=1"` and asserts the checkpoint is attached (`:23`) before checking the copy.
 - Turning off Spring's own `HttpWebHandlerAdapter` logger does not help: the text is on the exception, and any handler that logs it prints it.
 
 ## How to handle it
 
-- Never log the exception a `WebExceptionHandler` receives. Log `LoggableFailure.of(ex)` (`gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/error/LoggableFailure.kt:16`), a copy of the chain without `FluxOnAssembly$OnAssemblyException` (`:4`, `:25-27`) that keeps messages, frames, causes and other suppressed exceptions. The mapper does this at every log call with a throwable: `GatewayErrorWebExceptionHandler.kt:56`, `:95`, `:134`.
+- Never log the exception a `WebExceptionHandler` receives. Log `LoggableFailure.of(ex)` (`gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/error/LoggableFailure.kt:17`), a copy of the chain without `FluxOnAssembly$OnAssemblyException` (`:4`, `:25`, `:33`) that keeps messages, frames (taken back from the checkpoint, `:28-32`), causes and other suppressed exceptions. The mapper does this at every log call with a throwable: `GatewayErrorWebExceptionHandler.kt:56`, `:95`, `:134`.
 - Any later code that logs a throwable from the WebFlux chain (GW-02's stream error path, a filter) does the same.
 - Test for it by sending a query string and asserting it is absent from the whole captured output, stack traces included (`ErrorEnvelopeIntegrationTest:132`, `:168`).
+
+## Revision (2026-11-03)
+
+Dropping the checkpoint also drops the failure's frames: the checkpoint cut the original's stack trace to one frame and holds the full trace itself ([gotchas/reactor-checkpoint-truncates-error-stack-to-first-frame](reactor-checkpoint-truncates-error-stack-to-first-frame.md)). The copy must take the frames from the checkpoint before dropping it, as `mock-provider/src/main/kotlin/io/github/pdroacordi/llmgateway/mockprovider/error/LoggableFailure.kt:26-33` does. `gateway-app`'s copy did not; it does since the FND-04 fix commit (`LoggableFailure.kt:28-32`; [bugs/loggable-failure-logs-one-frame-after-reactor-checkpoint](../bugs/loggable-failure-logs-one-frame-after-reactor-checkpoint.md)).

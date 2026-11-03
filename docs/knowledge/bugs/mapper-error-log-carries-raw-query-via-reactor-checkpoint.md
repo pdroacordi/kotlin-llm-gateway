@@ -5,7 +5,7 @@ title: Every error the mapper logged with a stack trace printed the raw query st
 status: active
 severity: low
 tags: [errors, logging, webflux, reactor, privacy]
-related: [gotchas/spring-exception-handling-web-handler-checkpoint-carries-raw-query, bugs/committed-response-error-logged-twice-with-query-string, systems/request-context-and-errors]
+related: [gotchas/spring-exception-handling-web-handler-checkpoint-carries-raw-query, bugs/loggable-failure-logs-one-frame-after-reactor-checkpoint, bugs/committed-response-error-logged-twice-with-query-string, systems/request-context-and-errors]
 created: 2026-11-03
 updated: 2026-11-03
 source_files:
@@ -29,7 +29,7 @@ Spring Framework 7.0.10's `ExceptionHandlingWebHandler` puts a `CheckpointInsert
 
 ## Fix
 
-Fixed in FND-04. New `gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/error/LoggableFailure.kt`: `LoggableFailure.of(failure)` (`:16`) copies the failure chain for logging. Each copy's message is the original's `toString()`, its stack frames are the original's, causes are copied recursively, and suppressed exceptions are copied except `FluxOnAssembly$OnAssemblyException` (`:4`, `:25-27`); recursion stops at depth 32 (`:3`). The mapper logs `LoggableFailure.of(...)` at every log call with a throwable: `GatewayErrorWebExceptionHandler.kt:56` (after commit), `:95` (fallback) and `:134` (5xx). The logged class now reads `...LoggableFailure: java.lang.IllegalStateException: probe-secret`. Commit: the FND-04 commit (`Roadmap: FND-04`).
+Fixed in FND-04. New `gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/error/LoggableFailure.kt`: `LoggableFailure.of(failure)` (`:17`) copies the failure chain for logging. Each copy's message is the original's `toString()`, its stack frames are the original's (taken back from the checkpoint since the revision below, `:28-32`), causes are copied recursively, and suppressed exceptions are copied except `FluxOnAssembly$OnAssemblyException` (`:4`, `:25`, `:33`); recursion stops at depth 32 (`:3`). The mapper logs `LoggableFailure.of(...)` at every log call with a throwable: `GatewayErrorWebExceptionHandler.kt:56` (after commit), `:95` (fallback) and `:134` (5xx). The logged class now reads `...LoggableFailure: java.lang.IllegalStateException: probe-secret`. Commit: the FND-04 commit (`Roadmap: FND-04`).
 
 ## Prevention
 
@@ -40,3 +40,7 @@ Added for FND-04:
 - `LoggableFailureTest:12`: the copy drops the checkpoint and keeps message, frames, cause and other suppressed exceptions.
 
 After the fix, "secret-query" appears 0 times in the app test output. Review rule: a log assertion for "never recorded" data must send that data in the request (a query string, a header) and grep the whole output, stack traces included; checking only the log line misses suppressed and cause sections.
+
+## Revision (2026-11-03)
+
+The fix was incomplete. The same checkpoint also cuts the failure's own stack trace to its first frame and keeps the full trace in the `OnAssemblyException` that `LoggableFailure` drops, so the "stack frames are the original's" above are one frame. Filed as [bugs/loggable-failure-logs-one-frame-after-reactor-checkpoint](loggable-failure-logs-one-frame-after-reactor-checkpoint.md) and fixed in the FND-04 fix commit (`Roadmap: FND-04`); the behaviour is [gotchas/reactor-checkpoint-truncates-error-stack-to-first-frame](../gotchas/reactor-checkpoint-truncates-error-stack-to-first-frame.md).

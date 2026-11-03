@@ -6,12 +6,13 @@ import com.lemonappdev.konsist.api.declaration.KoFileDeclaration
 import com.lemonappdev.konsist.api.provider.KoAnnotationProvider
 
 /**
- * A Kotlin file and the module it belongs to. The module is explicit because Konsist derives it from the
- * path, which is wrong for fixtures (they all sit inside `architecture-tests`).
+ * A Kotlin file, the module it belongs to and its source set (`main`, `test`, `integrationTest`). Both are explicit
+ * because Konsist derives them from the path, which is wrong for fixtures (all in `architecture-tests`, `fixtures`).
  */
 class ModuleFile(
     module: String,
     val file: KoFileDeclaration,
+    val sourceSet: String,
 ) {
     // Konsist uses the platform separator
     // (docs/knowledge/gotchas/konsist-paths-and-module-names-use-platform-separator.md).
@@ -81,6 +82,9 @@ val ERROR_HANDLING_TYPES: List<String> =
     )
 
 private const val FIXTURES_SOURCE_SET = "fixtures"
+private const val MAIN_SOURCE_SET = "main"
+private const val INTEGRATION_TEST_SOURCE_SET = "integrationTest"
+private const val TESTCONTAINERS_PACKAGE = "org.testcontainers"
 private val NOT_MODULES = setOf("build-logic")
 
 /** ARCH-1: imports and fully qualified references written inline. */
@@ -194,7 +198,10 @@ fun unclassifiedModules(
         .sorted()
         .map { "ARCH-8 (ADR-014): module $it holds Kotlin sources but is not in the module table (Modules.kt)" }
 
-/** ARCH-9: a module references only its own packages and those of the modules in its `dependsOn`. */
+/**
+ * ARCH-9: a module references only its own packages and those of the modules in its `dependsOn`, plus those in its
+ * `testDependsOn` from an `integrationTest` source set (ADR-017).
+ */
 fun importsStayWithinAllowedModules(
     files: List<ModuleFile>,
     modules: List<Module> = Modules.all,
@@ -204,12 +211,50 @@ fun importsStayWithinAllowedModules(
         if (module == null) {
             emptyList()
         } else {
-            val allowed = listOf(module.rootPackage) + module.dependsOn.mapNotNull { modules.named(it)?.rootPackage }
-            forbiddenReferences(file, "ARCH-9", "ADR-005, ADR-014") { name ->
+            val testOnly = if (file.sourceSet == INTEGRATION_TEST_SOURCE_SET) module.testDependsOn else emptyList()
+            val allowed =
+                listOf(module.rootPackage) +
+                    (module.dependsOn + testOnly).mapNotNull { modules.named(it)?.rootPackage }
+            forbiddenReferences(file, "ARCH-9", "ADR-005, ADR-014, ADR-017") { name ->
                 name.isInPackage(BASE_PACKAGE) && allowed.none { name.isInPackage(it) }
             }
         }
     }
+
+/**
+ * ARCH-11: tests that need Docker live in `src/integrationTest` (ADR-016). `org.testcontainers` is referenced only
+ * from `integrationTest` source sets of non-core modules and from test-support's `main`; test-support's packages only
+ * from `integrationTest` source sets of other modules (ADR-017).
+ */
+fun testcontainersOnlyInIntegrationTests(
+    files: List<ModuleFile>,
+    modules: List<Module> = Modules.all,
+): List<String> =
+    files
+        // Core tests are plain JUnit (CLAUDE.md, Testing), so a core module's integrationTest gets no containers.
+        .filterNot { it.sourceSet == INTEGRATION_TEST_SOURCE_SET && modules.named(it.module)?.role != Role.CORE }
+        .flatMap { file ->
+            val containersAllowed = file.module == TEST_SUPPORT && file.sourceSet == MAIN_SOURCE_SET
+            val testSupportRoot = modules.named(TEST_SUPPORT)?.rootPackage ?: "$BASE_PACKAGE.testsupport"
+            forbiddenReferences(file, "ARCH-11", "ADR-016, ADR-017") { name ->
+                (!containersAllowed && name.isInPackage(TESTCONTAINERS_PACKAGE)) ||
+                    (file.module != TEST_SUPPORT && name.isInPackage(testSupportRoot))
+            }
+        }
+
+/**
+ * The source set of a file at [path] in [module]: the path segment after `<module>/src/`, or empty when there is
+ * none. Fixtures need it because Konsist names their source set `fixtures`.
+ */
+fun sourceSetOf(
+    module: String,
+    path: String,
+): String {
+    val normalized = path.replace('\\', '/')
+    val marker = "/${module.replace('\\', '/')}/src/"
+    val start = normalized.lastIndexOf(marker)
+    return if (start < 0) "" else normalized.substring(start + marker.length).substringBefore('/')
+}
 
 /**
  * ARCH-10: error handling lives only in `<app root>.error`, so a `@ControllerAdvice` cannot silently take over
@@ -231,7 +276,7 @@ object ProductionScope {
         Konsist
             .scopeFromProject()
             .files
-            .map { ModuleFile(it.moduleName, it) }
+            .map { ModuleFile(it.moduleName, it, it.sourceSetName) }
             .filterNot {
                 it.file.sourceSetName == FIXTURES_SOURCE_SET ||
                     it.module in NOT_MODULES ||

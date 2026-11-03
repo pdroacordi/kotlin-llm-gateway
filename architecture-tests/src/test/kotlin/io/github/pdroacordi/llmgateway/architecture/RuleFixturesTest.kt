@@ -1,6 +1,7 @@
 package io.github.pdroacordi.llmgateway.architecture
 
 import com.lemonappdev.konsist.api.Konsist
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -106,6 +107,106 @@ class RuleFixturesTest {
     }
 
     @Test
+    fun `ARCH-9 fails on a core integration test importing test-support`() {
+        val violations = importsStayWithinAllowedModules(fixture(ARCH_9_TEST_SUPPORT))
+        assertFlags(
+            violations,
+            "ARCH-9",
+            "UsesSharedPostgres.kt",
+            "imports $BASE_PACKAGE.testsupport.SharedPostgres",
+        )
+    }
+
+    @Test
+    fun `ARCH-9 allows test-support only in the integration tests of a module whose testDependsOn lists it`() {
+        val violations = importsStayWithinAllowedModules(fixture(ARCH_9_TEST_SUPPORT))
+        assertTrue(violations.none { "AllowedSharedRedis.kt" in it }) { violations.toString() }
+        assertFlags(
+            violations,
+            "ARCH-9",
+            "SharedRedisInUnitTest.kt",
+            "references $BASE_PACKAGE.testsupport.SharedRedis",
+        )
+    }
+
+    @Test
+    fun `ARCH-11 fails on Testcontainers imported or written inline in a unit test`() {
+        val violations = testcontainersOnlyInIntegrationTests(fixture(ARCH_11_UNIT_TEST))
+        assertFlags(
+            violations,
+            "ARCH-11",
+            "ContainerInUnitTest.kt",
+            "imports org.testcontainers.containers.GenericContainer",
+        )
+        assertFlags(
+            violations,
+            "ARCH-11",
+            "ContainerInUnitTest.kt",
+            "references org.testcontainers.utility.DockerImageName",
+        )
+        assertFlags(
+            violations,
+            "ARCH-11",
+            "ContainerInOwnUnitTest.kt",
+            "imports org.testcontainers.utility.DockerImageName",
+        )
+        assertTrue(violations.all { "ADR-016, ADR-017" in it }) { violations.toString() }
+    }
+
+    @Test
+    fun `ARCH-11 allows Testcontainers in integration tests and in test-support's main`() {
+        val violations = testcontainersOnlyInIntegrationTests(fixture(ARCH_11_UNIT_TEST))
+        assertTrue(violations.none { "AllowedContainer.kt" in it || "AllowedFixture.kt" in it }) {
+            violations.toString()
+        }
+    }
+
+    @Test
+    fun `ARCH-11 fails on Testcontainers in a core module's integration tests and unit tests`() {
+        val violations = testcontainersOnlyInIntegrationTests(fixture("arch-11-testcontainers-in-core"))
+        assertFlags(violations, "ARCH-11", "CoreContainer.kt", "imports org.testcontainers.containers.GenericContainer")
+        assertFlags(
+            violations,
+            "ARCH-11",
+            "InlineCoreContainer.kt",
+            "references org.testcontainers.utility.DockerImageName",
+        )
+    }
+
+    @Test
+    fun `ARCH-11 fails on test-support referenced from production code`() {
+        val violations = testcontainersOnlyInIntegrationTests(fixture("arch-11-test-support-in-main"))
+        assertFlags(violations, "ARCH-11", "FixtureInMain.kt", "imports $BASE_PACKAGE.testsupport.SharedRedis")
+    }
+
+    @Test
+    fun `a fixture file's source set is the segment after its module's src directory`() {
+        val sourceSets = fixture(ARCH_11_UNIT_TEST).associate { it.path.substringAfterLast('/') to it.sourceSet }
+        assertEquals(
+            mapOf(
+                "ContainerInUnitTest.kt" to "test",
+                "AllowedContainer.kt" to "integrationTest",
+                "AllowedFixture.kt" to "main",
+                "ContainerInOwnUnitTest.kt" to "test",
+            ),
+            sourceSets,
+        )
+    }
+
+    @Test
+    fun `the source set is read from a path with either separator`() {
+        val windows = "\\architecture-tests\\src\\fixtures\\kotlin\\c\\gateway-app\\src\\integrationTest\\kotlin\\X.kt"
+        val linux = "/gateway-app/src/test/kotlin/io/X.kt"
+        assertEquals("integrationTest", sourceSetOf("gateway-app", windows))
+        assertEquals("test", sourceSetOf("gateway-app", linux))
+    }
+
+    @Test
+    fun `a path outside the module's src directory has no source set`() {
+        assertEquals("", sourceSetOf("gateway-app", "/gateway-core/src/main/kotlin/X.kt"))
+    }
+
+    @Test
     fun `ARCH-10 fails on error handling outside an app's error package`() {
         val violations = errorHandlingOnlyInErrorPackage(fixture(ARCH_10))
         val annotation = "org.springframework.web.bind.annotation"
@@ -172,8 +273,8 @@ class RuleFixturesTest {
         assertFalse("reactorx.core".isInPackage("reactor"))
     }
 
-    // Konsist derives every fixture file's module as `architecture-tests`, so the module comes from the
-    // fixture layout instead: <case>/<module>/src/main/kotlin/...
+    // Konsist derives every fixture file's module as `architecture-tests` and its source set as `fixtures`, so both
+    // come from the fixture layout instead: <case>/<module>/src/<source set>/kotlin/...
     private fun fixture(case: String): List<ModuleFile> {
         val caseDir = File(FIXTURES_DIR, case)
         val moduleDirs = caseDir.listFiles { file -> file.isDirectory }.orEmpty()
@@ -182,7 +283,7 @@ class RuleFixturesTest {
             Konsist
                 .scopeFromDirectory("architecture-tests/$FIXTURES_DIR/$case/${moduleDir.name}")
                 .files
-                .map { ModuleFile(moduleDir.name, it) }
+                .map { ModuleFile(moduleDir.name, it, sourceSetOf(moduleDir.name, it.projectPath)) }
         }
     }
 
@@ -201,5 +302,7 @@ class RuleFixturesTest {
         // Relative to the test task's working directory, the architecture-tests project directory.
         const val FIXTURES_DIR = "src/fixtures/kotlin"
         const val ARCH_10 = "arch-10-error-handling-outside-error-package"
+        const val ARCH_9_TEST_SUPPORT = "arch-9-core-imports-test-support"
+        const val ARCH_11_UNIT_TEST = "arch-11-testcontainers-in-unit-test"
     }
 }

@@ -1,0 +1,46 @@
+# OpenTelemetry collector, core distribution (FND-02, ADR-FND-02-003). The only OTLP entry of the stack:
+# traces go to Jaeger, metrics are exposed for Prometheus to scrape.
+# No debug exporter and no logs pipeline: at detailed verbosity a debug exporter copies every span attribute
+# into the container log (spec FND-02, Observability). Adding one is a reviewed change.
+receivers:
+  otlp:
+    protocols:
+      # The collector defaults to localhost, which a published port cannot reach.
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+  batch: {}
+
+exporters:
+  otlp_grpc/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_grpc/jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888

@@ -18,6 +18,7 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 | Fallback chain | Ordered deployments tried for one request, only before the first byte reaches the client. | `FallbackChain` |
 | Guardrail | A rule applied to input or output, with a verdict: allow, redact or block. | `GuardrailRule`, `GuardrailVerdict` |
 | Ledger | Append-only record of the cost of every call, written from usage events. | `LedgerEntry` |
+| Local stack | The seven development services in `deploy/compose.yaml` (Postgres, Redis, Redpanda, OTel collector, Jaeger, Prometheus, Grafana) on loopback ports from `LLMGW_*_PORT`; project `llmgw` unless `COMPOSE_PROJECT_NAME` says otherwise. | `deploy/compose.yaml` |
 | Mock provider | The deterministic provider fake on port 8090 that every test and smoke run calls instead of a real provider; OpenAI and Anthropic shapes, scenarios and a request journal under `/__mock`. | `MockProviderApplication` |
 | Model alias | The model name a client sends (`chat-default`), resolved by the team's route table. | `ModelAlias` |
 | Price catalog | Per-model prices for input, output and cached-input tokens, with effective dates. | `PriceCatalog` |
@@ -29,6 +30,8 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 | Route table | A team's mapping from model aliases to deployments and the routing policy. | `RouteTable` |
 | Run | One execution of an agent version on an input. | `Run` |
 | Scenario | Per-model behaviour of the mock provider: ordered steps (each consumed by `times` requests) and then an `otherwise` behaviour (latency, error, fault, content, usage), set over `/__mock/scenarios`; `*` serves every model without its own. | `Scenario`, `Behaviour` |
+| Shared container | One Testcontainers container per test JVM for a backing service, started on first use and removed by Ryuk when the JVM ends; never stopped by a test or a Spring context. | `SharedPostgres`, `SharedRedis`, `SharedRedpanda`, `SharedMockProvider` |
+| Stack check | The script that checks a running local stack: services, health, loopback ports, OTLP traces to Jaeger and metrics to Prometheus, Prometheus targets, Grafana datasources; one `PASS` or `FAIL` line per check. | `tools/smoke/stack-check.sh` |
 | Step | One unit inside a run: a model call, a tool call or an approval. | `Step` |
 | Supervisor | Orchestration pattern where one agent decides which agent acts next. | `SupervisorPattern` |
 | Team | The tenant: owns keys, limits, budgets, routes and policies. Every request resolves to one. | `Team` |

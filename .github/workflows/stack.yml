@@ -1,0 +1,41 @@
+name: stack
+
+# Brings the local stack up on Linux and runs the same check as gateway-smoke (FND-02, ADR-FND-02-011).
+# Path-filtered: compose files change rarely, and every run pulls seven images.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/**"
+      - "tools/smoke/stack-check.sh"
+      - ".github/workflows/stack.yml"
+  pull_request:
+    paths:
+      - "deploy/**"
+      - "tools/smoke/stack-check.sh"
+      - ".github/workflows/stack.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate the compose file
+        run: docker compose -f deploy/compose.yaml config --quiet
+      - name: Start the stack
+        run: docker compose -f deploy/compose.yaml up -d --wait --wait-timeout 180
+      - name: Check the stack
+        run: bash tools/smoke/stack-check.sh
+      - name: Print service logs
+        if: failure()
+        run: docker compose -f deploy/compose.yaml logs --no-color
+      # This runner's stack is its own and ephemeral, so its volumes go too.
+      - name: Remove the stack
+        if: always()
+        run: docker compose -f deploy/compose.yaml down -v

@@ -44,6 +44,48 @@ tasks.named("check") {
     dependsOn(testing.suites.named("integrationTest"))
 }
 
+// Consumer side of the mock-provider image (ADR-FND-02-010, ADR-FND-03-002). A module that declares
+// `mockProvider(project(":mock-provider"))` gets the boot jar and mock-provider/Dockerfile as inputs and as the
+// system properties mockProvider.jar and mockProvider.dockerfile in its integrationTest JVM; any other module gets
+// neither. The jar comes from the variant attribute, so Gradle builds it through the artifact, never by naming
+// another project's task.
+val mockProvider = configurations.dependencyScope("mockProvider")
+val mockProviderJar =
+    configurations.resolvable("mockProviderJar") {
+        extendsFrom(mockProvider.get())
+        attributes {
+            attribute(Category.CATEGORY_ATTRIBUTE, objects.named("mock-provider-boot-jar"))
+        }
+    }
+
+tasks.named<Test>("integrationTest") {
+    // Locals only: the argument lambda must not capture the script object (configuration cache).
+    val jars: FileCollection = files(mockProviderJar)
+    val dockerfile =
+        isolated.rootProject.projectDirectory
+            .file("mock-provider/Dockerfile")
+            .asFile
+    val dockerfileWhenUsed = jars.elements.map { if (it.isEmpty()) emptyList() else listOf(dockerfile) }
+    inputs
+        .files(jars)
+        .withPathSensitivity(PathSensitivity.NONE)
+        .withPropertyName("mockProviderJar")
+    inputs
+        .files(dockerfileWhenUsed)
+        .withPathSensitivity(PathSensitivity.NONE)
+        .withPropertyName("mockProviderDockerfile")
+    jvmArgumentProviders.add(
+        CommandLineArgumentProvider {
+            val jar = jars.files.singleOrNull()
+            if (jar == null) {
+                emptyList()
+            } else {
+                listOf("-DmockProvider.jar=${jar.absolutePath}", "-DmockProvider.dockerfile=${dockerfile.absolutePath}")
+            }
+        },
+    )
+}
+
 // Kover reports every non-`test` compilation as application code; the suite's own classes are tests. Its test task
 // stays instrumented, so what it exercises in `main` still counts.
 kover {

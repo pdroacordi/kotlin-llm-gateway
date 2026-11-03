@@ -5,7 +5,7 @@ description: Exercise kotlin-llm-gateway end to end over HTTP against the local 
 
 # gateway-smoke
 
-Tests prove the code is correct in isolation; a smoke run proves the deployed pieces agree (headers, SSE framing, Redis keys, spans, ledger rows). Usually run by the `gateway-tester` agent. Until FND-02 (stack) lands, say the run is not possible and why.
+Tests prove the code is correct in isolation; a smoke run proves the deployed pieces agree (headers, SSE framing, Redis keys, spans, ledger rows). Usually run by the `gateway-tester` agent.
 
 ## Ground rules
 
@@ -17,7 +17,7 @@ Tests prove the code is correct in isolation; a smoke run proves the deployed pi
 
 ## Steps
 
-1. **Stack up:** `docker compose -f deploy/compose.yaml ps`; start what is missing with `up -d` and note that you started it.
+1. **Stack up:** `docker compose -f deploy/compose.yaml ps`; start what is missing with `up -d --wait` and note that you started it; then `bash tools/smoke/stack-check.sh` (a FAIL is a finding: quote it).
 2. **Apps:** `./gradlew :gateway-app:bootRun` (and `:agent-app:bootRun` when agents are in scope) in the background with the `local` profile; poll `GET /actuator/health` until `UP`, at most 90 s. A start failure is the finding: quote the log. Start `mock-provider` too if the stack does not run it (`./gradlew :mock-provider:bootRun` in the background, health on `:8090`), with the latency the run needs (`MOCK_DEFAULTS_LATENCY_TTFT`, `MOCK_DEFAULTS_LATENCY_PER_TOKEN`), and `POST :8090/__mock/reset` before the scenarios.
 3. **Seed:** create the teams, keys, routes, prices and policies the scenarios need through the admin API (never by SQL, so the API itself is exercised). Scenario scripts live in `tools/smoke/`.
 4. **Scenarios:** run the ones the item touches, plus the baseline (auth, one completion, one stream):
@@ -29,7 +29,7 @@ Tests prove the code is correct in isolation; a smoke run proves the deployed pi
    - Cache: the second identical request is a hit (header), with no call reaching the mock (`/__mock/stats` `lastSeq` unchanged); a different team misses.
    - Guardrail: a prompt with a CPF is redacted before the mock sees it (`/__mock/requests?since=<seq>` body); a blocked prompt gives the documented error and no provider call.
    - Fallback: the mock set to fail the primary model (`PUT /__mock/scenarios/<model>` with an error step); the request succeeds on the fallback, and the span shows both attempts.
-   - Trace: Jaeger API (`:16686/api/traces?service=gateway-app`) has the request's trace with the expected spans and GenAI attributes, and no prompt text.
+   - Trace: Jaeger API (`:16686/api/v3/traces?query.service_name=gateway-app&query.start_time_min=<RFC 3339>&query.start_time_max=<RFC 3339>`, or `/api/traces/<trace id>`; Jaeger 2.22 answers the old `/api/traces?service=` search with 404, systems entry `local-stack`) has the request's trace with the expected spans and GenAI attributes, and no prompt text. `stack-check.sh` traces appear as service `llmgw-stack-check`.
    - Cost: the ledger row for the request ID exists once, with the catalog price times usage.
    - Agents: register an agent, start a run, kill the app mid-run, restart, and the run resumes without repeating a completed step.
 5. **Load** (only when asked, or for OPS items): k6 from its container against the gateway with the mock at a fixed latency and `MOCK_JOURNAL_CAPTURE_BODIES=false`; record p50/p95/p99 gateway overhead, error rate and throughput. Scripts in `tools/load/`.

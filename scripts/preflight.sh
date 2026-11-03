@@ -49,12 +49,68 @@ else
     warn "java not on PATH (JDK 21+ required)"
 fi
 
+# A stack port's value: exported variable, then deploy/.env (read as KEY=VALUE, never executed), then the default.
+stack_port() {
+    local value
+    value=$(printenv "$1" || true)
+    if [ -z "$value" ] && [ -f deploy/.env ]; then
+        value=$(sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" deploy/.env | tail -1 | tr -d "\r\"'" |
+            sed 's/[[:space:]]*$//')
+    fi
+    printf '%s' "${value:-$2}"
+}
+
+# Docker Desktop publishes 127.0.0.1:<port> even when a Windows process already listens on that port, and `up`
+# succeeds while the port serves the other program
+# (docs/knowledge/gotchas/docker-desktop-publishes-ports-held-by-windows-processes.md). So, while the stack is down,
+# warn about every stack port something already listens on. Prints "pid <pid> on <address>" lines per port.
+listeners_on() {
+    case "$(uname -s)" in
+        MINGW* | MSYS* | CYGWIN*)
+            # A listening row has no remote end (0.0.0.0:0 or [::]:0); unlike the state column, that is not localized.
+            printf '%s\n' "$host_listeners" | tr -d '\r' | awk -v p="$1" '$1 == "TCP" &&
+                ($3 == "0.0.0.0:0" || $3 == "[::]:0") &&
+                ($2 == "0.0.0.0:" p || $2 == "127.0.0.1:" p || $2 == "[::]:" p || $2 == "[::1]:" p) {
+                print "pid " $5 " on " $2 }'
+            ;;
+        *)
+            printf '%s\n' "$host_listeners" | awk -v p="$1" '{ n = split($4, a, ":"); if (a[n] == p) {
+                pid = "?"; if (match($0, /pid=[0-9]+/)) pid = substr($0, RSTART + 4, RLENGTH - 4)
+                print "pid " pid " on " $4 } }'
+            ;;
+    esac
+}
+check_stack_ports() {
+    case "$(uname -s)" in
+        MINGW* | MSYS* | CYGWIN*) host_listeners=$(timeout 5 netstat -ano -p TCP 2>/dev/null; timeout 5 netstat -ano -p TCPv6 2>/dev/null) ;;
+        *) host_listeners=$(timeout 5 ss -ltnpH 2>/dev/null || true) ;;
+    esac
+    [ -n "$host_listeners" ] || return 0
+    local entry name default port found
+    for entry in LLMGW_POSTGRES_PORT:5440 LLMGW_REDIS_PORT:6390 LLMGW_KAFKA_PORT:19092 LLMGW_OTLP_GRPC_PORT:4317 \
+        LLMGW_OTLP_HTTP_PORT:4318 LLMGW_JAEGER_UI_PORT:16686 LLMGW_PROMETHEUS_PORT:9090 LLMGW_GRAFANA_PORT:3301; do
+        name=${entry%%:*}
+        default=${entry#*:}
+        port=$(stack_port "$name" "$default")
+        found=$(listeners_on "$port" | sort -u | tr '\n' ';' | sed 's/;$//; s/;/, /g')
+        [ -n "$found" ] && warn "port $port ($name) is already in use ($found): the stack would start but that port would reach the other program; set $name in deploy/.env"
+    done
+    return 0
+}
+
 # Docker and the local stack (deploy/compose.yaml lands with FND-02).
 if command -v docker >/dev/null 2>&1; then
     if timeout 5 docker info >/dev/null 2>&1; then
         if [ -f deploy/compose.yaml ]; then
-            running=$(timeout 8 docker compose -f deploy/compose.yaml ps --services --filter status=running 2>/dev/null | tr '\n' ' ')
+            running=$(timeout 8 docker compose -f deploy/compose.yaml ps --services --filter status=running 2>/dev/null | tr -d '\r' | tr '\n' ' ' | sed 's/ *$//')
             note "compose running: ${running:-none}"
+            # A linked worktree has its own git dir; without deploy/.env it shares the default project and ports.
+            git_dir=$(git rev-parse --git-dir 2>/dev/null || true)
+            common_dir=$(git rev-parse --git-common-dir 2>/dev/null || true)
+            if [ -n "$git_dir" ] && [ "$git_dir" != "$common_dir" ] && [ ! -f deploy/.env ]; then
+                note "worktree without deploy/.env: compose commands here act on the shared llmgw stack"
+            fi
+            [ -z "$running" ] && check_stack_ports
         fi
     else
         warn "docker daemon not reachable"

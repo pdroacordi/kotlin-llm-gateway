@@ -39,6 +39,6 @@ class ModuleClassificationTest {
     @Test
     fun `a nested module name uses forward slashes on every platform`() {
         val anyFile = ProductionScope.files.first().file
-        assertEquals("tools/smoke", ModuleFile("tools\\smoke", anyFile).module)
+        assertEquals("tools/smoke", ModuleFile("tools\\smoke", anyFile, "main").module)
     }
 }

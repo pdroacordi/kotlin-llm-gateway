@@ -220,6 +220,8 @@ To be taken in CACHE-02 with the `semantic-cache` eval (CACHE-03): latency, reca
 ### Decision
 To be taken in COST-02. Constraint either way: the request path never waits on the ledger, and an event is applied once even if delivered twice.
 
+- 2026-11-03 (FND-02): the dev stack and `test-support` run Redpanda v26.2.6 so option A can be evaluated; if COST-02 picks B, the `redpanda` service and `SharedRedpanda` are removed. Licences accepted for local and CI use only (images unmodified, nothing redistributed): Redpanda BSL 1.1 and Redis 8 (tri-licence incl. AGPLv3), user: "Redpanda + Redis 8 (Recommended)".
+
 ---
 
 <a id="adr-011"></a>
@@ -318,6 +320,7 @@ ADR-005 lists ten target modules. FND-01 builds the Gradle skeleton and the Kons
 | `mock-provider` | `.mockprovider` | app (ADR-FND-03-003) | FND-03 |
 | `evals` | `.evals` | tool | CACHE-03 |
 | `architecture-tests` | `.architecture` | tool | FND-01 |
+| `test-support` | `.testsupport` | tool (ADR-017) | FND-02 |
 
 ### Consequences
 - The item that creates a module includes it in `settings.gradle.kts`, applies exactly one convention plugin, adds it to the merged Kover report in the root build, and puts every file under the module's root package. A module missing from the table, or a role change, is a local ADR in that item's spec plus an edit of the table in `architecture-tests` and here.
@@ -325,6 +328,7 @@ ADR-005 lists ten target modules. FND-01 builds the Gradle skeleton and the Kons
 - Spring wiring annotations are allowed only in modules with the `app` role; if FND-03 makes `mock-provider` a Spring Boot app it changes that module's role, with a local ADR.
 - Details and the rule list: [`specs/FND-01-gradle-skeleton.md`](specs/FND-01-gradle-skeleton.md) (ADR-FND-01-005, ADR-FND-01-007).
 - 2026-11-03 (FND-03): `mock-provider` takes role `app` (a Spring Boot WebFlux service on port 8090) with an empty `dependsOn`, so it imports none of our packages; ARCH-6 allows its wiring and ARCH-10 confines its error mapper to `.mockprovider.error`. See [ADR-FND-03-003](specs/FND-03-mock-provider.md).
+- 2026-11-03 (FND-02): `test-support` added (role tool, ADR-017); `gateway-infra` is not created by FND-02 and comes with GW-04 or the first item with infra code.
 
 ---
 
@@ -391,6 +395,33 @@ From FND-03 on, some tests need a Docker daemon: the mock-provider image test (A
 - FND-03 creates the suite (a convention plugin or Gradle JVM test suites, its local choice) and the first Docker test; FND-02 adds the Testcontainers base classes to it.
 - CLAUDE.md Testing and `verify-gates` list `./gradlew integrationTest`; `./gradlew build` needs Docker running.
 - Kover measures both suites.
+- 2026-11-03 (FND-02): the fixtures are lazily started singleton objects in `test-support`, not base classes (a test may need several services); ARCH-11 enforces Docker-only-in-integrationTest (ADR-017).
+
+---
+
+<a id="adr-017"></a>
+## ADR-017: Test fixtures live in a test-support module, used only by integrationTest sources
+
+- **Status:** Accepted
+- **Date:** 2026-11-03
+
+### Context
+ADR-016 promised Testcontainers fixtures for every module's `integrationTest` suite. Their consumers span families: gateway-infra, gateway-app, gateway-providers, agent-app and cli. ARCH-4 forbids `agent-*` from importing `.gateway`, and ARCH-9 checks every source set against `dependsOn`.
+
+### Options
+- **A)** `java-test-fixtures` in gateway-infra: agent-app cannot use it (ARCH-4), and gateway-infra would exist only for fixtures.
+- **B)** Fixtures copied per module.
+- **C)** A module `test-support` (role tool, root `.testsupport`, imports nothing of ours), plus a `testDependsOn` column in the module table that ARCH-9 honours only in `integrationTest` source sets, plus a new rule ARCH-11.
+- **D)** Spring `@TestConfiguration` containers only: plain adapter tests are left out.
+
+### Decision
+**C.** ARCH-11: `org.testcontainers` is referenced only from `integrationTest` source sets and from test-support's main; `.testsupport` is referenced only from `integrationTest` source sets of modules whose `testDependsOn` lists test-support (gateway-providers, gateway-infra, gateway-app, agent-app, cli). Core modules, mock-provider, evals and architecture-tests have none. test-support has no production code and is not in the merged Kover report. Details: [FND-02](specs/FND-02-local-stack.md), ADR-FND-02-006 to -008.
+
+### Consequences
+- A module that needs containers adds `integrationTestImplementation(project(":test-support"))`.
+- ADR-016's "Docker only in `src/integrationTest`" becomes a checked rule.
+- Image versions shared with `deploy/compose.yaml` are kept equal by `StackContractTest`.
+- 2026-11-03 (FND-02 review): ARCH-11 also forbids `org.testcontainers` in core modules' `integrationTest` sources (every core source set; core tests are plain JUnit). Because Konsist reads no `.kts`, the build adds `checkTestSupportClasspath` (in `llmgw.kotlin-jvm`, part of `check`): it fails when `:test-support` or `org.testcontainers` resolves on a `main` or `test` classpath of any module but test-support.
 
 <!--
 Template for a new ADR (copy above this comment):

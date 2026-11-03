@@ -1,6 +1,6 @@
 # Container overview
 
-Updated: 2026-11-03 (target design; FND-03 note)
+Updated: 2026-11-03 (target design; FND-03 note; FND-02 local stack)
 
 ```mermaid
 flowchart LR
@@ -24,8 +24,10 @@ flowchart LR
     otel --> jaeger["Jaeger"]
     otel --> prom["Prometheus"]
     prom --> grafana["Grafana"]
+    grafana -.->|datasource| jaeger
 ```
 
 - The agent runtime reaches models only through the gateway (ADR-011).
 - `mock-provider` (`:8090`) answers the OpenAI and Anthropic paths and exposes `/__mock` for scenarios, counters and the request journal (FND-03).
+- In development all infrastructure runs from `deploy/compose.yaml` on loopback ports (CLAUDE.md); the apps and the mock run on the host (FND-02).
 - The semantic-cache vector store (ADR-009) and the broker choice (ADR-010) are open; the diagram changes when CACHE-02 and COST-02 settle them.

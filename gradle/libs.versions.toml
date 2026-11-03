@@ -38,6 +38,12 @@ testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version
 # Version from testcontainers-bom. Not named `testcontainers`: a prefix of another alias becomes a group
 # (docs/knowledge/gotchas/gradle-version-catalog-alias-prefix-needs-asprovider.md).
 testcontainers-core = { module = "org.testcontainers:testcontainers" }
+# Versionless: Spring Boot's BOM manages them (test-support applies it as a platform, spec FND-02).
+testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
+testcontainers-redpanda = { module = "org.testcontainers:testcontainers-redpanda" }
+postgresql = { module = "org.postgresql:postgresql" }
+kafka-clients = { module = "org.apache.kafka:kafka-clients" }
+snakeyaml = { module = "org.yaml:snakeyaml" }
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 kotlin-allopen = { module = "org.jetbrains.kotlin:kotlin-allopen", version.ref = "kotlin" }
 spring-boot-gradle-plugin = { module = "org.springframework.boot:spring-boot-gradle-plugin", version.ref = "spring-boot" }

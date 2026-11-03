@@ -21,9 +21,9 @@ The SessionStart hook (`.claude/settings.json`) runs `bash scripts/preflight.sh 
    - "Work in a `git worktree` (isolated) or in the main checkout?"
    - "Is another agent working at the same time right now?"
 
-   With another agent on the same branch or stack, run no migration, no build and no smoke run without agreeing first. A worktree that needs its own stack uses a compose project name and port overrides (`COMPOSE_PROJECT_NAME`, documented by FND-02).
+   With another agent on the same branch or stack, run no migration, no build and no smoke run without agreeing first. A worktree that needs its own stack uses a compose project name and port overrides (`COMPOSE_PROJECT_NAME` and `LLMGW_*_PORT` in `deploy/.env`, from `deploy/.env.example`; systems entry `local-stack`).
 6. **Items in progress:** a `[~]` row is continued before any new item is started.
-7. **Local stack** (after FND-02): `docker compose -f deploy/compose.yaml up -d` if the item needs it. Ports are in CLAUDE.md.
+7. **Local stack** (after FND-02): `docker compose -f deploy/compose.yaml up -d --wait` if the item needs it. Ports are in CLAUDE.md. A "port ... is already in use" problem from the script means another program holds a stack port: on Docker Desktop `up` would still succeed and the port would reach that program, so set the variable in `deploy/.env` first.
 8. **Summarize in at most 5 lines** (branch and upstream, hooks, denylist, answers to step 5, items in progress) and only then go to the roadmap.
 
 ## Pitfalls

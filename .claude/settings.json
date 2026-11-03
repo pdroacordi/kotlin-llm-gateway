@@ -5,7 +5,6 @@
       "Bash(./gradlew *)",
       "Bash(bash scripts/preflight.sh*)",
       "Bash(bash scripts/docs-check.sh*)",
-      "Bash(bash scripts/clean-room-scan.sh*)",
       "Bash(git status*)",
       "Bash(git diff*)",
       "Bash(git log*)",

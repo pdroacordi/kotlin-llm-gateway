@@ -24,8 +24,5 @@ Thumbs.db
 !.env.example
 *.pem
 
-# Clean-room denylist (CLAUDE.md rule 1): local only, never committed
-.clean-room-denylist
-
 # Claude Code per-user settings
 .claude/settings.local.json

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Session preflight: git state, hooks, toolchain, local stack, clean-room denylist, living docs.
+# Session preflight: git state, hooks, toolchain, local stack, living docs.
 # Usage: bash scripts/preflight.sh [--quiet]   (--quiet prints only problems). Always exits 0.
 set -u
 
@@ -119,10 +119,6 @@ else
     warn "docker not on PATH"
 fi
 
-# Clean-room denylist (CLAUDE.md rule 1).
-if [ ! -s .clean-room-denylist ] || ! grep -qvE '^[[:space:]]*(#|$)' .clean-room-denylist; then
-    warn ".clean-room-denylist missing or empty: the pre-commit scan cannot catch employer terms (CLAUDE.md rule 1)"
-fi
 
 # Living docs.
 if ! docs=$(bash scripts/docs-check.sh 2>&1); then

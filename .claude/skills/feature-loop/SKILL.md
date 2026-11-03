@@ -34,7 +34,7 @@ Update it at every status change. It is cheap and it is what survives a compacti
 7. **Run.** Observable over HTTP (an endpoint, a header, a limit, a cache hit, a trace, a ledger row): the `gateway-tester` agent through the `gateway-smoke` skill. A threshold, classifier or routing policy changed: the `ai-eval` skill, with a before/after metrics table. A finding goes back to step 4.
 8. **Docs.** The `docs-update` skill: spec, systems entry (created for a new system, linked from the CLAUDE.md table), `DECISIONS.md`, `GLOSSARY.md`, patterns and gotchas, diagrams (`diagram-update`), `docs/knowledge/INDEX.md`. A user decision is recorded in their words, with the date.
 9. **Roadmap.** Row `[x]`, today's date, spec and systems entry linked in Notes. Follow-ups the work exposed become new `[ ]` rows with the next free ID in their area.
-10. **Commit.** Stage explicit paths, only this item's files. `type(scope): summary`, body ending `Roadmap: <ID>`. The hooks run the clean-room scan and `docs-check`; a hook failure is fixed, never bypassed. Do not push.
+10. **Commit.** Stage explicit paths, only this item's files. `type(scope): summary`, body ending `Roadmap: <ID>`. The hooks run `docs-check` and the commit-message rules; a hook failure is fixed, never bypassed. Do not push.
 11. **Update the RUN-PLAN** and continue.
 
 ## Invariants (put them in every implementation prompt)

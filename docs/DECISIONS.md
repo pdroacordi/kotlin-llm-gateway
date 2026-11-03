@@ -24,7 +24,7 @@ The author works on similar systems professionally. The repository is public and
 
 ### Consequences
 - Specs carry a `references` list of public sources.
-- The pre-commit hook and `verify-gates` run `scripts/clean-room-scan.sh`.
+- 2026-11-03: the automatic scan was removed (user: "Remove the denylist"; the project is personal and the check had no terms to scan). `scripts/clean-room-scan.sh` and `.clean-room-denylist` no longer exist; the rule stands as guidance in CLAUDE.md rule 1 and in the specs' `references`.
 - When the origin of an idea is unclear, the agent asks instead of writing it.
 
 ---

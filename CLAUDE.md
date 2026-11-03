@@ -17,7 +17,7 @@ This file holds only the rules that apply everywhere. **Before changing a system
 
 ## Hard rules
 
-1. **Clean-room.** Nothing from any employer: no code, config, internal service or host names, metric names, prompts, dashboards or architecture documents, whether from files or from memory. Design from public sources (papers, OSS projects, vendor docs) and cite them in the spec. The pre-commit hook scans staged additions against `.clean-room-denylist` (local, gitignored, one term per line). When unsure whether something is internal knowledge, ask.
+1. **Clean-room.** Nothing from any employer: no code, config, internal service or host names, metric names, prompts, dashboards or architecture documents, whether from files or from memory. Design from public sources (papers, OSS projects, vendor docs) and cite them in the spec. When unsure whether something is internal knowledge, ask.
 2. **No secrets** in the repo, logs, traces, test fixtures or prompts to other tools. Provider keys come from the environment.
 3. **Preserve work you did not do.** No stash, reset or checkout over changes that are not yours; never `git add -A`. Stage explicit paths.
 4. **Commit and push only as the skills say.** `feature-loop` commits each finished item locally; nothing is pushed unless the user asks. Never `--no-verify`.
@@ -154,4 +154,4 @@ docs/                living docs (this table's links)
 
 ## Commits
 
-`type(scope): summary`, imperative, English, at most 72 characters. Types: `feat fix perf refactor test docs build ci chore style revert`. Scope is the area (`gateway`, `routing`, `ratelimit`, `cache`, `guardrails`, `obs`, `cost`, `agents`, `docs`, `build`). `feat`, `fix` and `perf` bodies end with `Roadmap: <ID>`. No co-author trailers. `.githooks/` checks this and runs the clean-room and docs checks (`git config core.hooksPath .githooks`).
+`type(scope): summary`, imperative, English, at most 72 characters. Types: `feat fix perf refactor test docs build ci chore style revert`. Scope is the area (`gateway`, `routing`, `ratelimit`, `cache`, `guardrails`, `obs`, `cost`, `agents`, `docs`, `build`). `feat`, `fix` and `perf` bodies end with `Roadmap: <ID>`. No co-author trailers. `.githooks/` checks this and runs the docs check (`git config core.hooksPath .githooks`).

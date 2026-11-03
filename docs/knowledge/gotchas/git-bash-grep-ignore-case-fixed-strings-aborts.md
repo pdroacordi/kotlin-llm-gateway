@@ -7,8 +7,7 @@ tags: [tooling, windows, git-bash, grep, scripts]
 related: []
 created: 2026-11-03
 updated: 2026-11-03
-source_files:
-  - scripts/clean-room-scan.sh
+source_files: []
 ---
 
 ## Summary
@@ -29,5 +28,9 @@ echo "x acmeinternal y" | grep -nF -f terms.txt        # works
 
 ## How to handle it
 
-- Do not combine `-i` and `-F` in scripts that may run in Git Bash. Lowercase both the patterns and the input with `tr '[:upper:]' '[:lower:]'` and use `grep -F` (`scripts/clean-room-scan.sh`, `check()`).
+- Do not combine `-i` and `-F` in scripts that may run in Git Bash. Lowercase both the patterns and the input with `tr '[:upper:]' '[:lower:]'` and use `grep -F`.
 - In any check whose silence means "pass", capture grep's exit code and fail when it is greater than 1 (2 means error, 134 means abort).
+
+## Revision (2026-11-03)
+
+`scripts/clean-room-scan.sh`, where this was found, was removed with the denylist (ADR-001). The behaviour still applies to any script run in Git Bash.

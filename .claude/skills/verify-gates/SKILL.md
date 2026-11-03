@@ -1,6 +1,6 @@
 ---
 name: verify-gates
-description: Run kotlin-llm-gateway's quality gates in order - tests, coverage, static analysis, rule scans, docs check, clean-room and git hygiene, full build - stopping at the first failure. Use before marking a roadmap item done, before every commit of code, and when the user says "verify", "run the gates", "is it green", "roda os portões".
+description: Run kotlin-llm-gateway's quality gates in order - tests, coverage, static analysis, rule scans, docs check, git hygiene, full build - stopping at the first failure. Use before marking a roadmap item done, before every commit of code, and when the user says "verify", "run the gates", "is it green", "roda os portões".
 ---
 
 # verify-gates
@@ -74,14 +74,13 @@ bash scripts/docs-check.sh; echo "exit $?"
 
 Knowledge entries indexed with matching IDs, specs on the roadmap, roadmap IDs unique, CLAUDE.md systems links resolve.
 
-## 6. Clean-room and git hygiene
+## 6. Git hygiene
 
 ```bash
-bash scripts/clean-room-scan.sh --all-changes; echo "exit $?"
 git status --short
 ```
 
-The scan warns when `.clean-room-denylist` is missing or empty: report that as a FAIL of this gate. `git status` must not list `build/`, `.gradle/`, `.env`, `.clean-room-denylist`, scratch logs or `.claude/settings.local.json`, and should list only the files this change touched. A change you did not make is another session's: leave it and mention it.
+`git status` must not list `build/`, `.gradle/`, `.env`, scratch logs or `.claude/settings.local.json`, and should list only the files this change touched. A change you did not make is another session's: leave it and mention it.
 
 ## 7. Build
 

@@ -315,7 +315,7 @@ ADR-005 lists ten target modules. FND-01 builds the Gradle skeleton and the Kons
 | `agent-core` | `.agent.core` | core | AGT-01 |
 | `agent-app` | `.agent.app` | app | AGT-01 |
 | `cli` | `.cli` | client | CLI-01 |
-| `mock-provider` | `.mockprovider` | tool (FND-03 may change the role) | FND-03 |
+| `mock-provider` | `.mockprovider` | app (ADR-FND-03-003) | FND-03 |
 | `evals` | `.evals` | tool | CACHE-03 |
 | `architecture-tests` | `.architecture` | tool | FND-01 |
 
@@ -324,6 +324,7 @@ ADR-005 lists ten target modules. FND-01 builds the Gradle skeleton and the Kons
 - Sub-packages inside a root (by feature, e.g. `.gateway.core.routing`) are the creating item's choice.
 - Spring wiring annotations are allowed only in modules with the `app` role; if FND-03 makes `mock-provider` a Spring Boot app it changes that module's role, with a local ADR.
 - Details and the rule list: [`specs/FND-01-gradle-skeleton.md`](specs/FND-01-gradle-skeleton.md) (ADR-FND-01-005, ADR-FND-01-007).
+- 2026-11-03 (FND-03): `mock-provider` takes role `app` (a Spring Boot WebFlux service on port 8090) with an empty `dependsOn`, so it imports none of our packages; ARCH-6 allows its wiring and ARCH-10 confines its error mapper to `.mockprovider.error`. See [ADR-FND-03-003](specs/FND-03-mock-provider.md).
 
 ---
 
@@ -366,6 +367,30 @@ Full options and reasoning in [FND-04](specs/FND-04-request-context-and-errors.m
 - Each later item adds its variant and table row and inherits the request ID, the envelope and `x-request-id` on its errors without further work.
 - AGT-01 decides whether `/agents/v1` uses the same envelope. The default is yes, so the CLI parses one shape. agent-app cannot import `gateway-core` (ADR-011), so it keeps its own small table; ARCH-10 already confines its mapper to `.agent.app.error`.
 - COST-02 can store the request ID as a Postgres `uuid` with time-ordered inserts.
+
+---
+
+<a id="adr-016"></a>
+## ADR-016: Tests that need Docker run in their own suite
+
+- **Status:** Accepted
+- **Date:** 2026-11-03
+
+### Context
+From FND-03 on, some tests need a Docker daemon: the mock-provider image test (ADR-FND-03-002), then the Testcontainers base classes of FND-02 (Postgres, Redis, the broker) and every adapter's integration tests. Mixing them into `test` makes the fast TDD loop depend on Docker and slows it down.
+
+### Options
+- **A)** Everything in `test`; Docker always required.
+- **B)** Docker tests skipped when Docker is absent (`disabledWithoutDocker`): a missing daemon turns into a silent pass.
+- **C)** A separate `integrationTest` suite per module for tests that need Docker, wired into `check` (so `./gradlew build` and CI run it); `./gradlew test` stays Docker-free.
+
+### Decision
+**C.** Without a daemon `integrationTest` fails with Testcontainers' own message, never skips. Spring-context tests that need no container (WebTestClient against the app, FND-04) stay in `test`.
+
+### Consequences
+- FND-03 creates the suite (a convention plugin or Gradle JVM test suites, its local choice) and the first Docker test; FND-02 adds the Testcontainers base classes to it.
+- CLAUDE.md Testing and `verify-gates` list `./gradlew integrationTest`; `./gradlew build` needs Docker running.
+- Kover measures both suites.
 
 <!--
 Template for a new ADR (copy above this comment):

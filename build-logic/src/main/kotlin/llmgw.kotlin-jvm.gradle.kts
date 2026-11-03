@@ -6,6 +6,7 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint")
     id("dev.detekt")
     id("org.jetbrains.kotlinx.kover")
+    id("llmgw.integration-test")
 }
 
 // Precompiled script plugins cannot use the generated `libs` accessors (Gradle version catalog docs).
@@ -60,8 +61,9 @@ tasks.withType<Detekt>().configureEach {
     jvmTarget = javaVersion.toString()
 }
 
-// `detektMain` and `detektTest` replace the plain `detekt` task: they have type resolution, it has not.
+// `detektMain`, `detektTest` and `detektIntegrationTest` replace the plain `detekt` task: they have type
+// resolution, it has not.
 tasks.named("check") {
     setDependsOn(dependsOn.filterNot { it is TaskProvider<*> && it.name == "detekt" })
-    dependsOn("detektMain", "detektTest", "koverVerify")
+    dependsOn("detektMain", "detektTest", "detektIntegrationTest", "koverVerify")
 }

@@ -34,7 +34,7 @@ object Modules {
             Module("agent-core", "$BASE_PACKAGE.agent.core", Role.CORE),
             Module("agent-app", "$BASE_PACKAGE.agent.app", Role.APP, listOf("agent-core")),
             Module("cli", "$BASE_PACKAGE.cli", Role.CLIENT),
-            Module("mock-provider", "$BASE_PACKAGE.mockprovider", Role.TOOL),
+            Module("mock-provider", "$BASE_PACKAGE.mockprovider", Role.APP),
             Module("evals", "$BASE_PACKAGE.evals", Role.TOOL),
             Module("architecture-tests", "$BASE_PACKAGE.architecture", Role.TOOL),
         )

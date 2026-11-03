@@ -1,6 +1,6 @@
 # Container overview
 
-Updated: 2026-11-03 (target design, before FND-01)
+Updated: 2026-11-03 (target design; FND-03 note)
 
 ```mermaid
 flowchart LR
@@ -27,4 +27,5 @@ flowchart LR
 ```
 
 - The agent runtime reaches models only through the gateway (ADR-011).
+- `mock-provider` (`:8090`) answers the OpenAI and Anthropic paths and exposes `/__mock` for scenarios, counters and the request journal (FND-03).
 - The semantic-cache vector store (ADR-009) and the broker choice (ADR-010) are open; the diagram changes when CACHE-02 and COST-02 settle them.

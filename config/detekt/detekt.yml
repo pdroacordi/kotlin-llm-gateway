@@ -8,6 +8,9 @@ style:
   ForbiddenVoid:
     # WebFlux contracts return Mono<Void> (WebExceptionHandler, BodyInserter); Unit cannot stand in there.
     ignoreUsageInGenerics: true
+  MagicNumber:
+    # Defaults plus the integrationTest source set (see the note at the end of this file).
+    excludes: ['**/test/**', '**/integrationTest/**', '**/*.kts']
 
 # CLAUDE.md: no GlobalScope, never swallow CancellationException. Listed explicitly so an alpha
 # that changes a default cannot switch them off.
@@ -25,3 +28,27 @@ coroutines:
     active: true
   SuspendFunWithFlowReturnType:
     active: true
+
+# The default excludes of these rules (and MagicNumber's, above) list `**/test/**` but no `**/integrationTest/**`,
+# so backtick test names and literals in the integrationTest source set (ADR-016) would be findings.
+complexity:
+  TooManyFunctions:
+    excludes: ['**/test/**', '**/integrationTest/**']
+exceptions:
+  InstanceOfCheckForException:
+    excludes: ['**/test/**', '**/integrationTest/**']
+  ThrowingExceptionsWithoutMessageOrCause:
+    excludes: ['**/test/**', '**/integrationTest/**']
+  TooGenericExceptionCaught:
+    excludes: ['**/test/**', '**/integrationTest/**']
+naming:
+  FunctionNaming:
+    excludes: ['**/test/**', '**/integrationTest/**']
+performance:
+  ForEachOnRange:
+    excludes: ['**/test/**', '**/integrationTest/**']
+  SpreadOperator:
+    excludes: ['**/test/**', '**/integrationTest/**']
+potential-bugs:
+  UnsafeCallOnNullableType:
+    excludes: ['**/test/**', '**/integrationTest/**']

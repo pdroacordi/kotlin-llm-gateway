@@ -1,0 +1,59 @@
+spring:
+  application:
+    name: mock-provider
+  web:
+    resources:
+      # No static files; an unknown path is a plain 404 in the provider shape.
+      add-mappings: false
+  webflux:
+    problemdetails:
+      # The default, made explicit: true registers a second error mapper (ADR-015, one mapper per app).
+      enabled: false
+  http:
+    codecs:
+      # Request body limit; a larger body is 413 in the provider shape.
+      max-in-memory-size: 10MB
+  reactor:
+    netty:
+      # With server.shutdown immediate, the event loops stop at once instead of after the 2 s default quiet period;
+      # ServerConfiguration bounds the wait for open connections (ShutdownIntegrationTest: under 4 s).
+      shutdown-quiet-period: 0s
+
+server:
+  # CLAUDE.md, local ports.
+  port: 8090
+  # Graceful shutdown would wait out requests held by a `hang` fault (up to mock.max-hold).
+  shutdown: immediate
+
+logging:
+  level:
+    # The mapper logs every error; this adapter would repeat each intentional abort as an ERROR line with the raw
+    # query string (docs/knowledge/bugs/committed-response-error-logged-twice-with-query-string.md).
+    org.springframework.web.server.adapter.HttpWebHandlerAdapter: off
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+# FND-03 section 5, Configuration; every key can be set from the environment (MOCK_DEFAULTS_LATENCY_TTFT=50ms).
+mock:
+  models: [mock-chat, mock-chat-mini, mock-claude, mock-embed]
+  defaults:
+    latency:
+      ttft: 0ms
+      per-token: 0ms
+      jitter: 0ms
+    completion-tokens: 16
+    content-mode: lorem
+  embeddings:
+    default-dimensions: 1536
+    max-dimensions: 3072
+  auth:
+    require-credential: true
+  journal:
+    capacity: 1000
+    max-body-bytes: 16384
+    capture-bodies: true
+  max-hold: 300s

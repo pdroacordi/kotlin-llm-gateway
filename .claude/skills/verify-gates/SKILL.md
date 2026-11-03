@@ -16,7 +16,16 @@ Run in order and stop at the first red gate. Report each gate as PASS/FAIL with 
 grep -E "BUILD (SUCCESSFUL|FAILED)|tests completed|FAILED" "$LOGS/gate_test.log" | tail -20
 ```
 
-PASS: exit 0 and `BUILD SUCCESSFUL`. On failure quote the failing class, test and assertion. The per-test XML is in `*/build/test-results/test/`. The Konsist architecture rules run here too.
+PASS: exit 0 and `BUILD SUCCESSFUL`. On failure quote the failing class, test and assertion. The per-test XML is in `*/build/test-results/test/`. The Konsist architecture rules run here too. This gate needs no Docker.
+
+## 1b. Docker tests
+
+```bash
+./gradlew integrationTest --console=plain > "$LOGS/gate_itest.log" 2>&1; RESULT=$?; echo "exit $RESULT"
+grep -E "BUILD (SUCCESSFUL|FAILED)|tests completed|FAILED" "$LOGS/gate_itest.log" | tail -20
+```
+
+The `integrationTest` suite of every module (ADR-016): tests under `src/integrationTest` that need a Docker daemon (Testcontainers). Without Docker it fails with Testcontainers' own message, never skips; report that as a FAIL and say Docker is not running. XML in `*/build/test-results/integrationTest/`.
 
 ## 2. Coverage
 
@@ -24,12 +33,12 @@ PASS: exit 0 and `BUILD SUCCESSFUL`. On failure quote the failing class, test an
 ./gradlew koverVerify --console=plain > "$LOGS/gate_cov.log" 2>&1; echo "exit $?"
 ```
 
-Thresholds live in the build (80% lines in `*-core`, 70% overall). Report the measured numbers for the modules the change touched (`./gradlew koverLog`).
+Thresholds live in the build (80% lines in `*-core`, 70% overall). Kover measures both test suites, so this gate runs `integrationTest` too and needs Docker. Report the measured numbers for the modules the change touched (`./gradlew koverLog`).
 
 ## 3. Static analysis
 
 ```bash
-./gradlew ktlintCheck detektMain detektTest --console=plain > "$LOGS/gate_static.log" 2>&1; echo "exit $?"
+./gradlew ktlintCheck detektMain detektTest detektIntegrationTest --console=plain > "$LOGS/gate_static.log" 2>&1; echo "exit $?"
 ```
 
 Never fix a finding by adding it to a baseline or a suppression without a one-line reason in the code.
@@ -79,6 +88,8 @@ The scan warns when `.clean-room-denylist` is missing or empty: report that as a
 ```bash
 ./gradlew build --console=plain > "$LOGS/gate_build.log" 2>&1; echo "exit $?"
 ```
+
+`build` runs `check`, which includes `integrationTest`: Docker must be running.
 
 Never run two Gradle builds in one checkout at the same time.
 

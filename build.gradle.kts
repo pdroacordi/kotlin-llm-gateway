@@ -6,14 +6,18 @@ plugins {
 dependencies {
     kover(project(":gateway-core"))
     kover(project(":gateway-app"))
+    kover(project(":mock-provider"))
 }
 
 kover {
     reports {
         filters {
             excludes {
-                // The `main` entry point runs under bootRun, not under tests.
-                classes("io.github.pdroacordi.llmgateway.gateway.app.GatewayApplicationKt")
+                // The `main` entry points run under bootRun, not under tests.
+                classes(
+                    "io.github.pdroacordi.llmgateway.gateway.app.GatewayApplicationKt",
+                    "io.github.pdroacordi.llmgateway.mockprovider.MockProviderApplicationKt",
+                )
             }
         }
     }

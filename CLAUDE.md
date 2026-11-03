@@ -32,9 +32,10 @@ gateway-app ──▶ gateway-core ◀── gateway-providers   (OpenAI, Anthro
      └────────▶ gateway-infra ──▶ gateway-core       (Redis, Postgres, Kafka, OTel)
 agent-app   ──▶ agent-core                           (calls the gateway over HTTP, like any client)
 cli                                                  (HTTP client of both apps, imports neither; ADR-012)
+mock-provider                                        (provider fake on :8090; imports nothing of ours; FND-03)
 ```
 
-The graph above is the target. Built today: `gateway-core` (request IDs and the error model, FND-04), `gateway-app`, `architecture-tests`. [ADR-014](docs/DECISIONS.md#adr-014) says which item creates each other module and its root package. Adding a module: `include` it in `settings.gradle.kts`, apply exactly one convention plugin from `build-logic/`, add a `kover(project(...))` line to the root `build.gradle.kts` if it has production code, and put every file under its root package from the ADR-014 table.
+The graph above is the target. Built today: `gateway-core` (request IDs and the error model, FND-04), `gateway-app`, `mock-provider` (FND-03, a Spring Boot app that imports nothing of ours), `architecture-tests`. [ADR-014](docs/DECISIONS.md#adr-014) says which item creates each other module and its root package. Adding a module: `include` it in `settings.gradle.kts`, apply exactly one convention plugin from `build-logic/`, add a `kover(project(...))` line to the root `build.gradle.kts` if it has production code, and put every file under its root package from the ADR-014 table.
 
 - **Core modules are plain Kotlin.** No Spring, Reactor, Netty, JDBC/R2DBC or HTTP-client imports in `*-core`. They hold domain types, ports (interfaces) and pure policies (routing, limits, cost, cache keys). Konsist tests enforce it.
 - **One port per capability** (`ChatModelPort`, `RateLimiterPort`, `ResponseCachePort`, `GuardrailPort`, `UsageSink`, ...). Only the adapter sees a provider's or library's types.
@@ -72,6 +73,7 @@ Read the entry before touching the system. The rule beside each is the one a cha
 | System | Entry | Never break |
 |---|---|---|
 | Request context and errors | [request-context-and-errors](docs/knowledge/systems/request-context-and-errors.md) | Every response WebFlux handles carries a gateway-generated `x-request-id`; every error body is the OpenAI envelope written only by `gateway.app.error`; a 5xx body never carries an exception message. |
+| Mock provider | [mock-provider](docs/knowledge/systems/mock-provider.md) | The same request always gets the same content and usage; a credential value is never stored, logged or returned; a scenario step is consumed by exactly one request. |
 | Auth and teams | (GW-04) | Every request resolves to exactly one team before any other stage. API keys are stored as HMAC hashes and shown once. |
 | Provider adapters | (GW-01) | Provider types never cross the port. A stream is translated chunk by chunk, never buffered whole. Usage comes from the provider; an estimate is used only when the provider omits it, and is flagged `estimated`. |
 | Routing | (RTE-01) | Routing is a pure function of (request, route table, provider health, budget state). Fallback happens only before the first byte is sent. |
@@ -92,19 +94,20 @@ Read the entry before touching the system. The rule beside each is the one a cha
 ## Testing
 
 ```bash
-./gradlew test                                # unit (core, no Spring context) + integration (Testcontainers)
+./gradlew test                                # unit (core, no Spring context) + Spring-context tests; no Docker
+./gradlew integrationTest                     # tests that need Docker (Testcontainers), per module (ADR-016)
 ./gradlew :architecture-tests:test            # Konsist architecture rules ARCH-1 to ARCH-10
 ./gradlew koverVerify                         # coverage thresholds
 ./gradlew ktlintCheck detektMain detektTest   # style + static analysis (detekt with type resolution)
 ./gradlew ktlintFormat                        # fix style
-./gradlew build                               # everything
+./gradlew build                               # everything, integrationTest included: needs Docker running
 docker compose -f deploy/compose.yaml up -d   # local stack (FND-02)
 ```
 
 Gradle runs on JDK 21+ and provisions the JDK 25 toolchain itself.
 
 - TDD for core: a failing test first, the minimal code to pass, then refactor. Core tests are plain JUnit 5 + MockK + `kotlinx-coroutines-test`, no Spring context.
-- Integration tests use Testcontainers (Postgres, Redis, Kafka-compatible broker) and WireMock or `mock-provider`.
+- Integration tests use Testcontainers (Postgres, Redis, Kafka-compatible broker) and WireMock or `mock-provider`. Tests that need Docker live in `src/integrationTest` and run in the `integrationTest` suite (convention `llmgw.integration-test`, wired into `check`); without a daemon they fail, never skip (ADR-016). `mock-provider` runs as a container built from its boot jar and `mock-provider/Dockerfile` (consume the `mockProviderBootJar` configuration).
 - **Tests never call a real provider.** Live tests are tagged `live`, read keys from the environment, never run in CI, and need the user's go-ahead (they cost money).
 - Coverage: at least 80% of lines in `*-core`, 70% overall (Kover).
 

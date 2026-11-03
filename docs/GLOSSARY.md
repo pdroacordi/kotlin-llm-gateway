@@ -18,14 +18,17 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 | Fallback chain | Ordered deployments tried for one request, only before the first byte reaches the client. | `FallbackChain` |
 | Guardrail | A rule applied to input or output, with a verdict: allow, redact or block. | `GuardrailRule`, `GuardrailVerdict` |
 | Ledger | Append-only record of the cost of every call, written from usage events. | `LedgerEntry` |
+| Mock provider | The deterministic provider fake on port 8090 that every test and smoke run calls instead of a real provider; OpenAI and Anthropic shapes, scenarios and a request journal under `/__mock`. | `MockProviderApplication` |
 | Model alias | The model name a client sends (`chat-default`), resolved by the team's route table. | `ModelAlias` |
 | Price catalog | Per-model prices for input, output and cached-input tokens, with effective dates. | `PriceCatalog` |
 | Provider | An upstream LLM API vendor (OpenAI, Anthropic, a local server). | `Provider` |
 | Rate limit | A cap on requests or tokens per time window for a team. | `RateLimitPolicy` |
 | Request ID | The gateway-generated UUIDv7 for one call, returned in `x-request-id`; the key that ties a response, its log lines, its span and its ledger row. Never the trace ID. | `RequestId` |
+| Request journal | The mock provider's bounded, redacted log of the requests it received, with its arrival counter (`lastSeq`) and per-route, per-model counts; read over `/__mock/requests` and `/__mock/stats`. | `RequestJournal` |
 | Reservation | Tokens held against a team's limit before a call and reconciled with real usage after it. | `TokenReservation` |
 | Route table | A team's mapping from model aliases to deployments and the routing policy. | `RouteTable` |
 | Run | One execution of an agent version on an input. | `Run` |
+| Scenario | Per-model behaviour of the mock provider: ordered steps (each consumed by `times` requests) and then an `otherwise` behaviour (latency, error, fault, content, usage), set over `/__mock/scenarios`; `*` serves every model without its own. | `Scenario`, `Behaviour` |
 | Step | One unit inside a run: a model call, a tool call or an approval. | `Step` |
 | Supervisor | Orchestration pattern where one agent decides which agent acts next. | `SupervisorPattern` |
 | Team | The tenant: owns keys, limits, budgets, routes and policies. Every request resolves to one. | `Team` |

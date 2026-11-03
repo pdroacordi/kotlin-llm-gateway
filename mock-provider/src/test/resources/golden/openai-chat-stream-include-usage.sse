@@ -1,0 +1,12 @@
+data: {"id":"chatcmpl-mock-000000000001","object":"chat.completion.chunk","created":1793750400,"model":"mock-chat","system_fingerprint":"fp_mock","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-mock-000000000001","object":"chat.completion.chunk","created":1793750400,"model":"mock-chat","system_fingerprint":"fp_mock","choices":[{"index":0,"delta":{"content":"Hi"},"logprobs":null,"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-mock-000000000001","object":"chat.completion.chunk","created":1793750400,"model":"mock-chat","system_fingerprint":"fp_mock","choices":[{"index":0,"delta":{"content":" there"},"logprobs":null,"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-mock-000000000001","object":"chat.completion.chunk","created":1793750400,"model":"mock-chat","system_fingerprint":"fp_mock","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}],"usage":null}
+
+data: {"id":"chatcmpl-mock-000000000001","object":"chat.completion.chunk","created":1793750400,"model":"mock-chat","system_fingerprint":"fp_mock","choices":[],"usage":{"prompt_tokens":14,"completion_tokens":2,"total_tokens":16,"prompt_tokens_details":{"cached_tokens":0},"completion_tokens_details":{"reasoning_tokens":0}}}
+
+data: [DONE]
+

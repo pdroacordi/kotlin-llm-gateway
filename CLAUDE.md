@@ -31,6 +31,7 @@ Hexagonal, in Gradle modules ([ADR-005](docs/DECISIONS.md#adr-005)). Dependencie
 gateway-app ──▶ gateway-core ◀── gateway-providers   (OpenAI, Anthropic, mock)
      └────────▶ gateway-infra ──▶ gateway-core       (Redis, Postgres, Kafka, OTel)
 agent-app   ──▶ agent-core                           (calls the gateway over HTTP, like any client)
+cli                                                  (HTTP client of both apps, imports neither; ADR-012)
 ```
 
 The module list is a target; FND-01 sets the real one and updates this section.
@@ -129,6 +130,7 @@ gateway-infra/       redis, postgres, kafka, otel adapters
 gateway-app/         Spring Boot: OpenAI-compatible API, admin API, wiring
 agent-core/          agent definitions, run/step state machine, orchestration patterns
 agent-app/           Spring Boot: registry API, run executor, gateway client
+cli/                 the `agw` command: chat, agents and runs, admin (HTTP only)
 mock-provider/       deterministic provider fake (latency, errors, streams, usage)
 architecture-tests/  Konsist rules
 evals/               labelled datasets and the eval runner (cache, guardrails, routing)

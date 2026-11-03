@@ -96,6 +96,14 @@ What is built, what is next, and what is waiting on a decision. **This is the st
 | AGT-07 | Tools from MCP servers | `[?]` | AGT-02 | 2026-11-03 | Client only, or also expose agents as an MCP server? |
 | AGT-08 | Run observability: run trace linking gateway calls; per-run cost rollup | `[ ]` | AGT-03, OBS-01, COST-02 | 2026-11-03 | |
 
+## CLI
+
+| ID | Item | Status | Needs | Updated | Notes |
+|---|---|:-:|---|---|---|
+| CLI-01 | `agw` CLI: config and profiles, `models`, `chat` with streaming; request ID, cost and trace link per call | `[ ]` | GW-02, GW-04 | 2026-11-03 | "Yes, add a CLI" (user, 2026-11-03), to make the demo visible from a terminal. A pure HTTP client (ADR-012). |
+| CLI-02 | Agent commands: register agents and tools from files, `run` with a live step stream, inspect runs (steps, cost, trace) | `[ ]` | CLI-01, AGT-03 | 2026-11-03 | Adds the run events stream (SSE) to agent-app. |
+| CLI-03 | Admin commands: teams, keys, routes, prices, budgets; `usage` cost report per team | `[ ]` | CLI-01, RTE-01, COST-03 | 2026-11-03 | |
+
 ## Operations
 
 | ID | Item | Status | Needs | Updated | Notes |
@@ -103,5 +111,5 @@ What is built, what is next, and what is waiting on a decision. **This is the st
 | OPS-01 | k6 load suite against the mock provider; measure the overhead budget | `[ ]` | GW-02, FND-03 | 2026-11-03 | Confirms or revises the VISION target (p99 overhead at most 15 ms). |
 | OPS-02 | Multi-replica correctness: two gateway replicas, consistent limits and cache; Redis failover behaviour | `[ ]` | RL-02, CACHE-01 | 2026-11-03 | |
 | OPS-03 | Container images and Kubernetes manifests (Helm), autoscaling on concurrency | `[ ]` | OPS-01 | 2026-11-03 | |
-| OPS-04 | Public demo: one-command scenario, README walkthrough, architecture write-up | `[ ]` | AGT-04, COST-03, GRD-02, RTE-02 | 2026-11-03 | The "Done for v1" scenario in VISION. |
-| OPS-05 | Admin web UI | `[?]` | | 2026-11-03 | Out of v1 per VISION; is a UI worth it beyond Grafana and the admin API? |
+| OPS-04 | Public demo: one-command scenario, README walkthrough, architecture write-up | `[ ]` | AGT-04, COST-03, GRD-02, RTE-02, CLI-02 | 2026-11-03 | The "Done for v1" scenario in VISION, driven from the CLI. |
+| OPS-05 | Admin web UI | `[?]` | | 2026-11-03 | Out of v1 per VISION; is a web UI worth it beyond Grafana, the admin API and the CLI? |

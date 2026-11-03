@@ -30,16 +30,18 @@ Agents are the heaviest LLM users, so the agent runtime is a **client of the gat
 - **Product teams:** call the gateway with a team key; see their usage and cost.
 - **Agent authors:** register agents and tools, start runs, inspect steps, traces and cost.
 
+All three can use the `agw` CLI (ADR-012), a thin HTTP client of the same APIs.
+
 ## Non-goals (v1)
 
 - Training, fine-tuning or hosting models.
-- A web UI beyond Grafana dashboards and the admin API (OPS-05 is `[?]`).
+- A web UI beyond Grafana dashboards, the admin API and the CLI (OPS-05 is `[?]`).
 - A prompt-management product or playground.
 - Multi-region active-active deployment.
 
 ## Done for v1
 
-One command brings the stack up. Two teams call the gateway: one hits its rate limit while the other is unaffected; repeated and paraphrased questions are served from the exact and semantic caches; a simulated provider outage fails over to another model; a prompt with a CPF reaches the provider redacted; an agent workflow with tools runs, survives a restart of the runtime, and finishes; every call is visible in Jaeger and every team's cost in Grafana. A k6 run shows the overhead budget is met.
+One command brings the stack up; the scenario is driven from the `agw` CLI. Two teams call the gateway: one hits its rate limit while the other is unaffected; repeated and paraphrased questions are served from the exact and semantic caches; a simulated provider outage fails over to another model; a prompt with a CPF reaches the provider redacted; an agent workflow with tools runs, survives a restart of the runtime, and finishes; every call is visible in Jaeger and every team's cost in Grafana. A k6 run shows the overhead budget is met.
 
 ## Built clean-room
 

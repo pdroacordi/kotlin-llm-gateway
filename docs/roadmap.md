@@ -14,10 +14,11 @@ What is built, what is next, and what is waiting on a decision. **This is the st
 
 | ID | Item | Status | Needs | Updated | Notes |
 |---|---|:-:|---|---|---|
-| FND-01 | Gradle multi-module skeleton: Kotlin, Spring Boot, version catalog, ktlint, detekt, Kover, Konsist architecture tests, CI build job | `[ ]` | | 2026-11-03 | Pins the then-current stable Kotlin, Spring Boot and LTS JDK; updates the module list and Testing commands in CLAUDE.md. |
+| FND-01 | Gradle multi-module skeleton: Kotlin, Spring Boot, version catalog, ktlint, detekt, Kover, Konsist architecture tests, CI build job | `[x]` | | 2026-11-03 | Spec: [FND-01](specs/FND-01-gradle-skeleton.md). Built: modules `gateway-core` (no sources yet), `gateway-app` (actuator health on 8080), `architecture-tests` (Konsist ARCH-1 to ARCH-9, each with a violating fixture); Gradle 9.7.1, Kotlin 2.4.21, Spring Boot 4.1.2, JDK 25 toolchain; Kover, ktlint and detekt in `check`. No systems entry (the build is not a system). CI runs at the first push. |
 | FND-02 | Local stack in `deploy/compose.yaml` (Postgres, Redis, Redpanda, OTel collector, Jaeger, Prometheus, Grafana) and Testcontainers base classes | `[ ]` | FND-01 | 2026-11-03 | Ports from CLAUDE.md; `COMPOSE_PROJECT_NAME` and port overrides for worktrees. |
 | FND-03 | `mock-provider`: OpenAI- and Anthropic-shaped fake with configurable latency, errors, streaming and usage; request counter and request log | `[ ]` | FND-01 | 2026-11-03 | Every test and smoke run uses it; nothing in CI calls a real provider. |
 | FND-04 | Request context and error model: request ID, OpenAI error envelope, one exception mapper | `[ ]` | FND-01 | 2026-11-03 | |
+| FND-05 | Upgrade to stable Spring Boot 4.2 and detekt 2.0 when released | `[ ]` | FND-01 | 2026-11-03 | FND-01 pinned the pre-release detekt 2.0.0-alpha.6 and Spring Boot 4.1.2 (ADR-FND-01-001, ADR-FND-01-002 in the [FND-01 spec](specs/FND-01-gradle-skeleton.md)). Start only once both GA releases exist. |
 
 ## Gateway
 

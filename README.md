@@ -2,7 +2,7 @@
 
 An open-source, self-hostable **LLM gateway** and **agent runtime**, in Kotlin and Spring Boot.
 
-> **Status: design phase.** The architecture, roadmap and engineering rules are in place; code starts with `FND-01`. See the [roadmap](docs/roadmap.md).
+> **Status: build skeleton.** The Gradle multi-module build, its quality gates and the architecture rules exist (`FND-01`); code continues with `FND-02`. See the [roadmap](docs/roadmap.md).
 
 ## What it does (v1 target)
 

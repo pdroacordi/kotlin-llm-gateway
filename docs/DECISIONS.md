@@ -51,6 +51,7 @@ The project must show distributed-backend and applied-AI engineering in a stack 
 - Coroutines and `Flow` for the async model (ADR-006); Spring ecosystem for resilience (Resilience4j), metrics (Micrometer) and tracing (OpenTelemetry).
 - FND-01 pins the then-current stable Kotlin, Spring Boot and LTS JDK.
 - JVM startup and memory are higher than Go; OPS-03 accounts for it in the container sizing.
+- 2026-11-03 (FND-01): pinned Kotlin 2.4.21, Spring Boot 4.1.2, JDK 25 toolchain; see ADR-FND-01-001 and ADR-FND-01-003.
 
 ---
 
@@ -285,6 +286,44 @@ The working name `agent-gateway` is confusable with agentgateway (agentgateway.d
 
 ### Consequences
 - The local folder is still `agent-gateway`; renaming it is a manual step outside a session. The GitHub repository is created as `kotlin-llm-gateway`.
+
+---
+
+<a id="adr-014"></a>
+## ADR-014: Modules are created when first needed; one root package per module
+
+- **Status:** Accepted
+- **Date:** 2026-11-03
+
+### Context
+ADR-005 lists ten target modules. FND-01 builds the Gradle skeleton and the Konsist rules that keep the hexagon (ADR-005), the agent runtime (ADR-011) and the CLI (ADR-012) apart. Most target modules get no code for several items (agent modules with AGT-01, `cli` with CLI-01, `evals` with CACHE-03). An empty module still costs build configuration, a Konsist layer with no files fails `assertArchitecture` ("Layer X doesn't contain any files", Konsist docs), and an app shell would pre-empt choices that belong to later items (CLI framework in CLI-01, the shape of `mock-provider` in FND-03). Import rules keyed by package only mean something if every module owns a distinct package root.
+
+### Options
+- **A)** Create all ten modules in FND-01 with placeholder sources.
+- **B)** FND-01 creates only `gateway-core` (empty: the dependency target of `gateway-app` and the subject of the core-purity rule), `gateway-app` and `architecture-tests`. Every other module is created by the first item that puts code in it. The Konsist rules are keyed by a module table that already lists every target module with its root package and role, so a new module is under the rules from its first file, and an unlisted module fails a classification test.
+- **C)** B plus empty `agent-core` and `agent-app`, so the ADR-011 rule has real files to scan from day one.
+
+### Decision
+**B.** Each rule is proven to fire by a violating fixture ([`patterns/architecture-rule-with-violating-fixture`](knowledge/patterns/architecture-rule-with-violating-fixture.md)), so the ADR-011 and ADR-012 rules are live before their modules exist, which removes C's only advantage. Root packages under `io.github.pdroacordi.llmgateway` (ADR-013):
+
+| Module | Root package | Role | Created by |
+|---|---|---|---|
+| `gateway-core` | `.gateway.core` | core | FND-01 |
+| `gateway-providers` | `.gateway.providers` | adapter | GW-01 |
+| `gateway-infra` | `.gateway.infra` | adapter | first item with infra code (FND-02 or GW-04) |
+| `gateway-app` | `.gateway.app` | app | FND-01 |
+| `agent-core` | `.agent.core` | core | AGT-01 |
+| `agent-app` | `.agent.app` | app | AGT-01 |
+| `cli` | `.cli` | client | CLI-01 |
+| `mock-provider` | `.mockprovider` | tool (FND-03 may change the role) | FND-03 |
+| `evals` | `.evals` | tool | CACHE-03 |
+| `architecture-tests` | `.architecture` | tool | FND-01 |
+
+### Consequences
+- The item that creates a module includes it in `settings.gradle.kts`, applies exactly one convention plugin, adds it to the merged Kover report in the root build, and puts every file under the module's root package. A module missing from the table, or a role change, is a local ADR in that item's spec plus an edit of the table in `architecture-tests` and here.
+- Sub-packages inside a root (by feature, e.g. `.gateway.core.routing`) are the creating item's choice.
+- Spring wiring annotations are allowed only in modules with the `app` role; if FND-03 makes `mock-provider` a Spring Boot app it changes that module's role, with a local ADR.
+- Details and the rule list: [`specs/FND-01-gradle-skeleton.md`](specs/FND-01-gradle-skeleton.md) (ADR-FND-01-005, ADR-FND-01-007).
 
 <!--
 Template for a new ADR (copy above this comment):

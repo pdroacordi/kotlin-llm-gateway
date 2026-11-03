@@ -1,0 +1,24 @@
+# Overrides of detekt's default config only (buildUponDefaultConfig = true).
+# Rule names checked against the default config of detekt 2.0.0-alpha.6.
+
+style:
+  MaxLineLength:
+    # Must match ktlint's max_line_length in .editorconfig.
+    maxLineLength: 120
+
+# CLAUDE.md: no GlobalScope, never swallow CancellationException. Listed explicitly so an alpha
+# that changes a default cannot switch them off.
+coroutines:
+  active: true
+  GlobalCoroutineUsage:
+    active: true
+  InjectDispatcher:
+    active: true
+  RedundantSuspendModifier:
+    active: true
+  SleepInsteadOfDelay:
+    active: true
+  SuspendFunSwallowedCancellation:
+    active: true
+  SuspendFunWithFlowReturnType:
+    active: true

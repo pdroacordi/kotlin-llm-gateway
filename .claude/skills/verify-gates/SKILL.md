@@ -7,8 +7,6 @@ description: Run kotlin-llm-gateway's quality gates in order - tests, coverage, 
 
 Run in order and stop at the first red gate. Report each gate as PASS/FAIL with the evidence (counts, the offending lines). Write logs to the session scratchpad (`LOGS=<scratchpad>/gates`), never the repo.
 
-Until FND-01 lands there is no Gradle build: only gates 5 and 6 apply. Say so instead of reporting green.
-
 **Check the real exit code.** Capture `RESULT=$?` right after the command. A pipe (`| tail`), a trailing `echo` or a wrapper hides a red gate. Then read the summary itself, not only the code.
 
 ## 1. Tests
@@ -31,7 +29,7 @@ Thresholds live in the build (80% lines in `*-core`, 70% overall). Report the me
 ## 3. Static analysis
 
 ```bash
-./gradlew ktlintCheck detekt --console=plain > "$LOGS/gate_static.log" 2>&1; echo "exit $?"
+./gradlew ktlintCheck detektMain detektTest --console=plain > "$LOGS/gate_static.log" 2>&1; echo "exit $?"
 ```
 
 Never fix a finding by adding it to a baseline or a suppression without a one-line reason in the code.

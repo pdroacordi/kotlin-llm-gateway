@@ -34,7 +34,7 @@ agent-app   ──▶ agent-core                           (calls the gateway ov
 cli                                                  (HTTP client of both apps, imports neither; ADR-012)
 ```
 
-The module list is a target; FND-01 sets the real one and updates this section.
+The graph above is the target. Built today: `gateway-core` (no sources until FND-04), `gateway-app`, `architecture-tests`. [ADR-014](docs/DECISIONS.md#adr-014) says which item creates each other module and its root package. Adding a module: `include` it in `settings.gradle.kts`, apply exactly one convention plugin from `build-logic/`, add a `kover(project(...))` line to the root `build.gradle.kts` if it has production code, and put every file under its root package from the ADR-014 table.
 
 - **Core modules are plain Kotlin.** No Spring, Reactor, Netty, JDBC/R2DBC or HTTP-client imports in `*-core`. They hold domain types, ports (interfaces) and pure policies (routing, limits, cost, cache keys). Konsist tests enforce it.
 - **One port per capability** (`ChatModelPort`, `RateLimiterPort`, `ResponseCachePort`, `GuardrailPort`, `UsageSink`, ...). Only the adapter sees a provider's or library's types.
@@ -90,15 +90,17 @@ Read the entry before touching the system. The rule beside each is the one a cha
 
 ## Testing
 
-Commands exist once FND-01 lands.
-
 ```bash
-./gradlew test                    # unit (core, no Spring context) + integration (Testcontainers)
-./gradlew koverVerify             # coverage thresholds
-./gradlew ktlintCheck detekt      # style + static analysis
-./gradlew build                   # everything, including the Konsist architecture tests
+./gradlew test                                # unit (core, no Spring context) + integration (Testcontainers)
+./gradlew :architecture-tests:test            # Konsist architecture rules ARCH-1 to ARCH-9
+./gradlew koverVerify                         # coverage thresholds
+./gradlew ktlintCheck detektMain detektTest   # style + static analysis (detekt with type resolution)
+./gradlew ktlintFormat                        # fix style
+./gradlew build                               # everything
 docker compose -f deploy/compose.yaml up -d   # local stack (FND-02)
 ```
+
+Gradle runs on JDK 21+ and provisions the JDK 25 toolchain itself.
 
 - TDD for core: a failing test first, the minimal code to pass, then refactor. Core tests are plain JUnit 5 + MockK + `kotlinx-coroutines-test`, no Spring context.
 - Integration tests use Testcontainers (Postgres, Redis, Kafka-compatible broker) and WireMock or `mock-provider`.
@@ -133,6 +135,9 @@ agent-app/           Spring Boot: registry API, run executor, gateway client
 cli/                 the `llmgw` command: chat, agents and runs, admin (HTTP only)
 mock-provider/       deterministic provider fake (latency, errors, streams, usage)
 architecture-tests/  Konsist rules
+build-logic/         convention plugins (included build)
+gradle/              wrapper, version catalog (libs.versions.toml)
+config/detekt/       detekt overrides
 evals/               labelled datasets and the eval runner (cache, guardrails, routing)
 tools/smoke/         smoke scenarios; tools/load/ k6 scripts
 deploy/              compose.yaml, OTel, Grafana provisioning; later Helm

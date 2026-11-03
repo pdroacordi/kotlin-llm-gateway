@@ -5,29 +5,33 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Living docs consistency
         run: bash scripts/docs-check.sh
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - name: Detect the Gradle build
-        id: gradle
-        run: |
-          if [ -f gradlew ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "No Gradle build yet (FND-01)"; fi
-      - uses: actions/setup-java@v4
-        if: steps.gradle.outputs.present == 'true'
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '21'
-      - uses: gradle/actions/setup-gradle@v4
-        if: steps.gradle.outputs.present == 'true'
+          java-version: '25'
+      # Open-source caching; the default "enhanced" provider has its own terms of use (ADR-FND-01-009).
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
       - name: Build (tests, coverage, static analysis, architecture rules)
-        if: steps.gradle.outputs.present == 'true'
-        run: ./gradlew build --console=plain
+        run: ./gradlew build --console=plain --warning-mode=all

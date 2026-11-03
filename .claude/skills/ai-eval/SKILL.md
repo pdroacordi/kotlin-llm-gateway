@@ -1,6 +1,6 @@
 ---
 name: ai-eval
-description: Measure the AI-quality parts of agent-gateway against labelled datasets - semantic cache threshold (false hits vs hit rate), guardrail classifiers (PII, prompt injection), routing policies (cost vs quality), agent task success - and report a before/after metrics table. Use whenever a change touches a similarity threshold, an embedding model, a classifier, a routing or downgrade policy, or an agent prompt, and when the user says "eval", "calibra o limiar", "mede o cache", "avalia o guardrail".
+description: Measure the AI-quality parts of kotlin-llm-gateway against labelled datasets - semantic cache threshold (false hits vs hit rate), guardrail classifiers (PII, prompt injection), routing policies (cost vs quality), agent task success - and report a before/after metrics table. Use whenever a change touches a similarity threshold, an embedding model, a classifier, a routing or downgrade policy, or an agent prompt, and when the user says "eval", "calibra o limiar", "mede o cache", "avalia o guardrail".
 ---
 
 # ai-eval

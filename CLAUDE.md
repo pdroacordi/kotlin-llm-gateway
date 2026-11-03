@@ -1,6 +1,6 @@
-# agent-gateway
+# kotlin-llm-gateway
 
-An open-source LLM gateway (model routing, exact and semantic caching, per-team rate limits, guardrails, tracing, per-call cost) and an agent runtime that registers and orchestrates agents on top of it. Kotlin + Spring Boot. Built clean-room (rule 1).
+An open-source LLM gateway (model routing, exact and semantic caching, per-team rate limits, guardrails, tracing, per-call cost) and an agent runtime that registers and orchestrates agents on top of it. Kotlin + Spring Boot. Built clean-room (rule 1). Base package `io.github.pdroacordi.llmgateway`; CLI `llmgw` (ADR-013).
 
 | Question | Where |
 |---|---|
@@ -130,7 +130,7 @@ gateway-infra/       redis, postgres, kafka, otel adapters
 gateway-app/         Spring Boot: OpenAI-compatible API, admin API, wiring
 agent-core/          agent definitions, run/step state machine, orchestration patterns
 agent-app/           Spring Boot: registry API, run executor, gateway client
-cli/                 the `agw` command: chat, agents and runs, admin (HTTP only)
+cli/                 the `llmgw` command: chat, agents and runs, admin (HTTP only)
 mock-provider/       deterministic provider fake (latency, errors, streams, usage)
 architecture-tests/  Konsist rules
 evals/               labelled datasets and the eval runner (cache, guardrails, routing)

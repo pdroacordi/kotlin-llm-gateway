@@ -5,7 +5,7 @@ Updated: 2026-11-03 (target design, before FND-01)
 ```mermaid
 flowchart LR
     clients["Client apps<br/>(OpenAI SDKs)"] -->|"/v1/*<br/>team key"| gw["gateway-app"]
-    cli["agw CLI"] -->|"/v1/*, /admin/v1"| gw
+    cli["llmgw CLI"] -->|"/v1/*, /admin/v1"| gw
     cli -->|"/agents/v1"| ag
     authors["Agent authors"] -->|"/agents/v1"| ag["agent-app"]
     platform["Platform team"] -->|"/admin/v1"| gw

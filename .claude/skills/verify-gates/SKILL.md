@@ -1,6 +1,6 @@
 ---
 name: verify-gates
-description: Run agent-gateway's quality gates in order - tests, coverage, static analysis, rule scans, docs check, clean-room and git hygiene, full build - stopping at the first failure. Use before marking a roadmap item done, before every commit of code, and when the user says "verify", "run the gates", "is it green", "roda os portões".
+description: Run kotlin-llm-gateway's quality gates in order - tests, coverage, static analysis, rule scans, docs check, clean-room and git hygiene, full build - stopping at the first failure. Use before marking a roadmap item done, before every commit of code, and when the user says "verify", "run the gates", "is it green", "roda os portões".
 ---
 
 # verify-gates

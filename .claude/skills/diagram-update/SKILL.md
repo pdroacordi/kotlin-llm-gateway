@@ -1,6 +1,6 @@
 ---
 name: diagram-update
-description: Create or update agent-gateway's Mermaid diagrams in docs/diagrams/ (container overview, request and run sequences, state machines, data model) when a flow, the module graph or the schema changes. Use when an item changes the request pipeline, a sequence between services, the run/step state machine or a migration, and when the user says "atualiza o diagrama", "update the diagram", "draw the flow".
+description: Create or update kotlin-llm-gateway's Mermaid diagrams in docs/diagrams/ (container overview, request and run sequences, state machines, data model) when a flow, the module graph or the schema changes. Use when an item changes the request pipeline, a sequence between services, the run/step state machine or a migration, and when the user says "atualiza o diagrama", "update the diagram", "draw the flow".
 ---
 
 # diagram-update

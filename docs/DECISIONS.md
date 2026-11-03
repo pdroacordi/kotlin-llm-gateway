@@ -258,11 +258,33 @@ The product is two HTTP services. A back end alone is hard to demonstrate: there
 - **C)** A CLI that is a pure HTTP client of the public and admin APIs, like any other client.
 
 ### Decision
-**C.** Module `cli/`, command `agw`. Framework and packaging (JVM or native image) are decided in CLI-01.
+**C.** Module `cli/`, command `llmgw`. Framework and packaging (JVM or native image) are decided in CLI-01.
 
 ### Consequences
 - `cli` never imports `gateway-*` or `agent-*` modules (Konsist rule); whatever the CLI needs is first an API, so the CLI exercises the same contract as any client.
 - Live views (streamed chat, agent steps) need streaming endpoints; CLI-02 adds the run events stream to agent-app.
+
+---
+
+<a id="adr-013"></a>
+## ADR-013: Project name and base package
+
+- **Status:** Accepted
+- **Date:** 2026-11-03
+
+### Context
+The working name `agent-gateway` is confusable with agentgateway (agentgateway.dev), an established open-source AI gateway under the Linux Foundation. The user wants a name "tão claro quanto agent-gateway, para quem vê já soubesse o que é".
+
+### Options
+- **A)** Keep `agent-gateway`.
+- **B)** A metaphor name (`portaria`, `comporta`): distinctive, not self-describing.
+- **C)** A descriptive name with no exact GitHub collision: `kotlin-llm-gateway` or `llm-control-plane` (`switchyard` was rejected: NVIDIA's NeMo Switchyard).
+
+### Decision
+**C, `kotlin-llm-gateway`** (user, 2026-11-03: "kotlin-llm-gateway (Recommended)"). Base package `io.github.pdroacordi.llmgateway` (GitHub user `pdroacordi`); CLI command `llmgw`. Module names (`gateway-core`, `agent-app`, ...) are unchanged.
+
+### Consequences
+- The local folder is still `agent-gateway`; renaming it is a manual step outside a session. The GitHub repository is created as `kotlin-llm-gateway`.
 
 <!--
 Template for a new ADR (copy above this comment):

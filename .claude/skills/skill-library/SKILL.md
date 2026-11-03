@@ -1,6 +1,6 @@
 ---
 name: skill-library
-description: Router into the ECC skill and agent catalogue for agent-gateway (Kotlin, Spring Boot, Redis, Postgres, Kafka, OpenTelemetry, LLM APIs). Use when a task needs something outside the project's own skills - Kotlin or Spring patterns, Redis or Postgres specifics, migrations, API design, security review, LLM cost or eval patterns, Docker or Kubernetes - to find the right reference instead of guessing.
+description: Router into the ECC skill and agent catalogue for kotlin-llm-gateway (Kotlin, Spring Boot, Redis, Postgres, Kafka, OpenTelemetry, LLM APIs). Use when a task needs something outside the project's own skills - Kotlin or Spring patterns, Redis or Postgres specifics, migrations, API design, security review, LLM cost or eval patterns, Docker or Kubernetes - to find the right reference instead of guessing.
 ---
 
 # Skill library

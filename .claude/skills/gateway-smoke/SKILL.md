@@ -1,6 +1,6 @@
 ---
 name: gateway-smoke
-description: Exercise agent-gateway end to end over HTTP against the local stack and the mock provider - auth, completions, SSE streaming, rate limits, cache hits, guardrail blocks, fallback, traces, ledger rows, agent runs - and write a run report to docs/knowledge/runs/. Use after any change observable over HTTP, when the user says "smoke", "testa de ponta a ponta", "sobe e testa", and for a k6 load run ("load test", "teste de carga").
+description: Exercise kotlin-llm-gateway end to end over HTTP against the local stack and the mock provider - auth, completions, SSE streaming, rate limits, cache hits, guardrail blocks, fallback, traces, ledger rows, agent runs - and write a run report to docs/knowledge/runs/. Use after any change observable over HTTP, when the user says "smoke", "testa de ponta a ponta", "sobe e testa", and for a k6 load run ("load test", "teste de carga").
 ---
 
 # gateway-smoke

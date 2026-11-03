@@ -1,4 +1,4 @@
-# agent-gateway
+# kotlin-llm-gateway
 
 An open-source, self-hostable **LLM gateway** and **agent runtime**, in Kotlin and Spring Boot.
 
@@ -15,7 +15,7 @@ An open-source, self-hostable **LLM gateway** and **agent runtime**, in Kotlin a
 - **Cost per call** from a dated price catalog into an append-only ledger; team budgets and alerts.
 - **Agent runtime**: versioned agent definitions, HTTP tools on allowlisted hosts, durable runs that resume after a crash, and orchestration patterns (sequential, parallel, supervisor). Agents call models through the gateway, so their traffic is limited, cached, guarded, traced and billed like anyone's.
 
-- **`agw` CLI**: chat with streaming, register and run agents with a live view of each step, admin and cost reports, all over the same HTTP APIs.
+- **`llmgw` CLI**: chat with streaming, register and run agents with a live view of each step, admin and cost reports, all over the same HTTP APIs.
 
 ## Architecture
 

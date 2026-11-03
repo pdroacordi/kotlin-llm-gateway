@@ -1,6 +1,6 @@
 ---
 name: preflight
-description: Session preflight for agent-gateway, at the start of every session and before a feature, a feature-loop run, a migration or a commit - branch vs upstream (with a warning when CLAUDE.md, skills, hooks or DECISIONS.md changed upstream), git hooks path, JDK, Docker and the local stack, the clean-room denylist, docs-check, items in progress, and the parallel-work questions. Use when the SessionStart hook prints "PREFLIGHT found problems", and when the user says "bora começar", "pega o próximo item", "vamos codar", "antes de commitar" or "confere o ambiente".
+description: Session preflight for kotlin-llm-gateway, at the start of every session and before a feature, a feature-loop run, a migration or a commit - branch vs upstream (with a warning when CLAUDE.md, skills, hooks or DECISIONS.md changed upstream), git hooks path, JDK, Docker and the local stack, the clean-room denylist, docs-check, items in progress, and the parallel-work questions. Use when the SessionStart hook prints "PREFLIGHT found problems", and when the user says "bora começar", "pega o próximo item", "vamos codar", "antes de commitar" or "confere o ambiente".
 ---
 
 # preflight

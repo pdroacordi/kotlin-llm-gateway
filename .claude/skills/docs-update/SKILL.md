@@ -1,6 +1,6 @@
 ---
 name: docs-update
-description: Update agent-gateway's living docs in the canonical order (spec, roadmap, DECISIONS, GLOSSARY, systems entry and CLAUDE.md row, knowledge entries, diagrams, knowledge INDEX) and run docs-check, when an item starts, advances or is done. Use at step 8 of feature-loop, after any change to a system's behaviour, and when the user says "atualiza a doc", "update the docs", "fecha o item".
+description: Update kotlin-llm-gateway's living docs in the canonical order (spec, roadmap, DECISIONS, GLOSSARY, systems entry and CLAUDE.md row, knowledge entries, diagrams, knowledge INDEX) and run docs-check, when an item starts, advances or is done. Use at step 8 of feature-loop, after any change to a system's behaviour, and when the user says "atualiza a doc", "update the docs", "fecha o item".
 ---
 
 # docs-update

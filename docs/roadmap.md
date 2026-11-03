@@ -100,7 +100,7 @@ What is built, what is next, and what is waiting on a decision. **This is the st
 
 | ID | Item | Status | Needs | Updated | Notes |
 |---|---|:-:|---|---|---|
-| CLI-01 | `agw` CLI: config and profiles, `models`, `chat` with streaming; request ID, cost and trace link per call | `[ ]` | GW-02, GW-04 | 2026-11-03 | "Yes, add a CLI" (user, 2026-11-03), to make the demo visible from a terminal. A pure HTTP client (ADR-012). |
+| CLI-01 | `llmgw` CLI: config and profiles, `models`, `chat` with streaming; request ID, cost and trace link per call | `[ ]` | GW-02, GW-04 | 2026-11-03 | "Yes, add a CLI" (user, 2026-11-03), to make the demo visible from a terminal. A pure HTTP client (ADR-012). |
 | CLI-02 | Agent commands: register agents and tools from files, `run` with a live step stream, inspect runs (steps, cost, trace) | `[ ]` | CLI-01, AGT-03 | 2026-11-03 | Adds the run events stream (SSE) to agent-app. |
 | CLI-03 | Admin commands: teams, keys, routes, prices, budgets; `usage` cost report per team | `[ ]` | CLI-01, RTE-01, COST-03 | 2026-11-03 | |
 

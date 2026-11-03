@@ -150,7 +150,7 @@ Checked 2026-11-03. Dates marked * show only day and month on the source page; t
 | U3 | detekt 2.0.0-alpha.6 (Kotlin 2.4.10) with KGP 2.4.21, Gradle 9.7.1, configuration cache | Pre-release; patch-level Kotlin skew; type resolution on a JDK 25 classpath. | First: drop Kotlin to 2.4.10 (detekt's exact build version). If still red: configuration cache `problems=warn` for detekt tasks only, with a gotcha entry. |
 | U4 | Spring Boot 4.1.2 with Kotlin 2.4.21, coroutines 1.11.0, JUnit 6.1.3 | Boot 4.1.x is tested with 2.3.21, 1.10.2, 6.0.3. | Use the Boot-managed version of the failing library (catalog pin lowered to it). |
 | U5 | Kover 0.9.11 agent on Java 25 bytecode; Kover on a module with no classes | Kover docs say a bound is compared "only if the value is present", which implies an empty module passes; not confirmed by a run. | Java 25: `useJacoco()` with JaCoCo ≥ 0.8.14 (official Java 25 support). Empty module: `koverVerify` `onlyIf` the module has main Kotlin sources. |
-| U6 | MockK 1.14.11 on JDK 25 | Byte Buddy 1.18.x should read class file 69; not stated by MockK. | Verified in FND-04 (first MockK test); fallback is a newer Byte Buddy via a constraint. |
+| U6 | MockK 1.14.11 on JDK 25 | Byte Buddy 1.18.x should read class file 69; not stated by MockK. | Verified 2026-11-03 (section 11, "MockK on JDK 25"): works, no fallback needed; a `spyk` of a JDK object needs `--add-opens`. |
 | U7 | foojay-resolver-convention 1.0.0 on Gradle 9.7.1 | Released before Gradle 9.0. | Install Temurin 25 locally and point `org.gradle.java.installations.paths` at it in the user's `~/.gradle/gradle.properties` (not the repo). |
 | U8 | BlockHound on JDK 25 needs `-XX:+AllowRedefinitionToAddDeleteMethods` | OpenJDK review JDK-8358890 (2025-07) proposes obsoleting the flag in JDK 26 and expiring it in 27; merge status not confirmed. Fine on 25; a risk for the next LTS. | FND-02 / GW-02 own it; noted here so the JDK upgrade item checks it. |
 | U9 | Gradle 9 `wrapper` task in a directory without a settings file | Gradle 9 rejects builds without settings; whether `wrapper` is exempt was not confirmed. | The plan writes a one-line `settings.gradle.kts` first. |
@@ -221,7 +221,7 @@ Module root packages are the ADR-014 table (`io.github.pdroacordi.llmgateway.gat
 
 | ID | Rule | Applies to | Protects |
 |---|---|---|---|
-| ARCH-1 | No import or inline fully qualified reference in `org.springframework`, `reactor`, `io.netty`, `io.r2dbc`, `java.sql`, `javax.sql`, `org.jooq`, `io.lettuce`, `redis.clients`, `org.apache.kafka`, `io.opentelemetry.sdk`, `io.opentelemetry.exporter`, `java.net`, `javax.net`, `okhttp3`, `io.ktor.client`, `org.apache.hc`, `kotlinx.coroutines.reactor`, `kotlinx.coroutines.reactive`; allowed from `java.net`: `URI`, `URISyntaxException`, `URLEncoder`, `URLDecoder` | role core | CLAUDE.md "Core modules are plain Kotlin"; ADR-005, ADR-006 |
+| ARCH-1 | No import or inline fully qualified reference in `org.springframework`, `reactor`, `io.netty`, `io.r2dbc`, `java.sql`, `javax.sql`, `org.jooq`, `io.lettuce`, `redis.clients`, `org.apache.kafka`, `io.opentelemetry.sdk`, `io.opentelemetry.exporter`, `java.net`, `javax.net`, `java.nio.channels`, `com.sun.net.httpserver`, `jdk.net`, `okhttp3`, `io.ktor.client`, `org.apache.hc`, `kotlinx.coroutines.reactor`, `kotlinx.coroutines.reactive`; allowed from `java.net`: `URI`, `URISyntaxException`, `URLEncoder`, `URLDecoder` | role core | CLAUDE.md "Core modules are plain Kotlin"; ADR-005, ADR-006 |
 | ARCH-2 | Core imports nothing from the adapter or app packages of its family (`.gateway.core` ↛ `.gateway.providers`, `.gateway.infra`, `.gateway.app`; `.agent.core` ↛ `.agent.app`) | role core | ADR-005: dependencies point inward |
 | ARCH-3 | Adapters import nothing from `.gateway.app`; `.gateway.providers` and `.gateway.infra` do not import each other | role adapter | ADR-005 module graph in CLAUDE.md |
 | ARCH-4 | `agent-*` imports nothing from `io.github.pdroacordi.llmgateway.gateway` | `agent-core`, `agent-app` | ADR-011 |
@@ -238,7 +238,7 @@ Mechanics:
 - Each failure message names the rule ID, the file, the offending import or annotation, and the ADR.
 - Each of ARCH-1 to ARCH-7 and ARCH-9 has a fixture (ARCH-1 and ARCH-6 one per spelling of the violation) in `architecture-tests/src/fixtures/kotlin/arch-<n>-<case>/` that breaks it; `RuleFixturesTest` asserts the rule fails on it ([`patterns/architecture-rule-with-violating-fixture`](../knowledge/patterns/architecture-rule-with-violating-fixture.md)). ARCH-8's classification is a pure function (observed modules, table) tested with plain lists. `src/fixtures` is not a source set: never compiled, linted or analysed.
 - `architecture-tests`' `test` task declares as inputs every `**/*.kt` file under the root directory (the scope Konsist reads), excluding `**/build/**`, `**/.gradle/**`, `**/.kotlin/**` and `.git/**`, with relative path sensitivity (root path read through `isolated.rootProject.projectDirectory`). It reruns when any module changes and stays cacheable, instead of the `upToDateWhen { false }` the Konsist docs offer.
-- Fully qualified names written inline are matched in the file text too (outside import and package lines, comments and string literals): JDK packages such as `java.net` and `java.sql` are on every classpath, so the Gradle classpath does not stop them. Konsist reads no `.kts`, so a forbidden library added to a core build script is caught by `checkCoreClasspath` in `llmgw.kotlin-core` (fails `check` when the resolved compile or runtime classpath holds a forbidden group). The fast grep in `verify-gates` gate 4 stays as a pre-check; Konsist is authoritative.
+- Fully qualified names written inline are matched in the file text too (outside import and package lines, comments, literals and backtick names, found by one left-to-right scan; a name inside a string template stays hidden): JDK packages such as `java.net` and `java.sql` are on every classpath, so the Gradle classpath does not stop them. Konsist reads no `.kts`, so a forbidden library added to a core build script is caught by `checkCoreClasspath` in `llmgw.kotlin-core` (fails `check` when the resolved compile or runtime classpath holds a forbidden group). The fast grep in `verify-gates` gate 4 stays as a pre-check; Konsist is authoritative.
 
 ### gateway-app
 
@@ -472,6 +472,7 @@ Measured in step 4 and recorded in the Log; targets, not gates.
 - **Consequences:** The forbidden-import list is one constant in `ArchitectureRules.kt`; the grep in `verify-gates` gate 4 is a subset kept as a fast pre-check. Adding a library family to core (for example the OpenTelemetry API in OBS-01) is a change to that list with a local ADR. New reusable pattern: [`patterns/architecture-rule-with-violating-fixture`](../knowledge/patterns/architecture-rule-with-violating-fixture.md).
 - **Date:** 2026-11-03
 - 2026-11-03 (review): ARCH-9 added (per-module `dependsOn` allowlist, section 5 table), so the rule set is ARCH-1 to ARCH-9; a core build script is guarded by `checkCoreClasspath`, which Konsist cannot do (it reads no `.kts`).
+- 2026-11-03 (second review): `java.nio.channels`, `com.sun.net.httpserver` and `jdk.net` added to the forbidden core packages: like `java.net`, they are on every classpath, so only ARCH-1 keeps them out.
 
 ### ADR-FND-01-008: Generating the Gradle wrapper without a global Gradle
 - **Context:** No `gradle` on PATH; `~/.gradle` holds caches and JDKs only. The wrapper jar is binary and must be a genuine one (CI validates it).
@@ -540,3 +541,14 @@ Append-only, newest at the bottom. Every session on this item ends with an entry
 - **CI cache licence (pending user awareness, not blocking):** CI uses `gradle/actions/setup-gradle` with `cache-provider: basic` (open source, MIT). The default "enhanced" provider has its own licence terms; switching to it is the user's licensing call (ADR-FND-01-009).
 - **CI not yet run:** nothing is pushed. The first CI result is recorded here at the user's first push (cold target 8 min, warm 4 min).
 - **Next:** commit (`Roadmap: FND-01`). Follow-up [FND-05](../roadmap.md): Spring Boot 4.2 and detekt 2.0 stable upgrades.
+
+### 2026-11-03: MockK on JDK 25 (U6)
+- **Who:** implementer (subagent, test-gap closing)
+- **Done:** A temporary test in `gateway-core`, deleted afterwards, on Temurin 25.0.4.1 with MockK 1.14.11 and Byte Buddy 1.18.2. `mockk<java.time.Clock>()`, a mocked `Clock` driving `RequestIdGenerator`, `mockk` of a final Kotlin class and `spyk` of a Kotlin class (open and final members) pass. `spyk(Clock.fixed(...))` fails with `IllegalAccessException` on `Clock$FixedClock`, and passes with `--add-opens=java.base/java.time=ALL-UNNAMED` ([gotcha](../knowledge/gotchas/mockk-spyk-of-a-jdk-object-needs-add-opens.md)). No `--add-opens` was added to the build: nothing spies on a JDK object.
+- **Warnings:** dynamic agent loading (Byte Buddy) and `sun.misc.Unsafe::objectFieldOffset`, both announced for removal in a future release, and the CDS "bootstrap classpath has been appended" line. None fails a test. The Byte Buddy fallback of U6 is not needed.
+- **Next:** none.
+
+### 2026-11-03: Second-review fixes to ARCH-1
+- **Who:** implementer (subagent), from `gateway-reviewer`'s second pass
+- **Done, red before the fix:** `NOT_CODE` replaces the sequential stripping, so `"/v1/*"` or `// /v1/*` can no longer hide code and `'"'` no longer shifts strings; string templates stay hidden, as the KDoc states. Three packages added (ADR-FND-01-007). [bugs/arch-1-misses-jdk-clients-in-core](../knowledge/bugs/arch-1-misses-jdk-clients-in-core.md) lists the fixtures. The tree had no violation hidden by the old stripping: `architecture-tests` stayed green once the rule changed.
+- **Next:** commit (`Roadmap: FND-01`).

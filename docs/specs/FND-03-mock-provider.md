@@ -795,6 +795,7 @@ Targets, measured once and recorded in the Log; not gates.
   - Coverage: V1) a per-module minimum in `mock-provider/build.gradle.kts`; V2) the merged 70% rule only, plus the `MockProviderApplicationKt` exclusion (ADR-FND-01-006 allows that exclusion and asks for an ADR for any other); V3) exclude the mock from the merge (rejected: untested test infrastructure is how a fake drifts from the provider).
   - BlockHound: B1) wait for FND-02/GW-02; B2) enable it in `mock-provider`'s tests now, in the module's own build file, without touching `llmgw.spring-app` (which would also turn it on in `gateway-app`, FND-04's open DRBG question).
 - **Decision:** V2 with a recorded target (section 9, 85%), and B2.
+- **Revised 2026-11-03:** BlockHound moved from `mock-provider/build.gradle.kts` to `llmgw.spring-app`, so every app module's test JVMs run under it. The mock's dependency and JVM flag are unchanged, and FND-04's DRBG question is settled (FND-04 Log).
 - **Consequences:** The mock cannot pull the merged number down without the gate failing. U8 (`-XX:+AllowRedefinitionToAddDeleteMethods` on JDK 25) is exercised first here; if BlockHound misbehaves, the fallback is to keep `SleepInsteadOfDelay` and drop BlockHound from the mock with a gotcha entry. Buys: the latency simulation is proven non-blocking, which OPS-01's numbers depend on.
 - **Date:** 2026-11-03
 
@@ -833,7 +834,7 @@ Targets, measured once and recorded in the Log; not gates.
   - Kover instruments both suites' test tasks, so what `integrationTest` exercises in `main` counts; the suite's own source set is excluded from the report (`kover.currentProject.sources.excludedSourceSets`; [gotcha](../knowledge/gotchas/kover-excludes-only-the-test-compilation-by-default.md)).
   - detekt's test exclusions are extended with `**/integrationTest/**` for the nine active rules that exclude `**/test/**` by default ([gotcha](../knowledge/gotchas/detekt-default-test-excludes-miss-integration-test.md)).
   - In `mock-provider`, the `integrationTest` task takes the boot jar as a file input and passes its path as `-DmockProvider.jar` through a `CommandLineArgumentProvider` that captures a local provider, which the configuration cache accepts ([gotcha](../knowledge/gotchas/gradle-configuration-cache-rejects-script-object-in-lambda.md)).
-- **Consequences:** `./gradlew test` needs no Docker; `./gradlew build`, `check` and `koverVerify` do (CLAUDE.md Testing, `verify-gates`). FND-02 adds its base classes and dependencies to a suite that already exists. Every module pays one more (empty) source set and a few `NO-SOURCE` tasks. Not verified: that the suite fails rather than skips with Docker stopped (Docker was running throughout; no `disabledWithoutDocker` is used, so nothing can skip). Buys: one place that defines the suite, the "exactly one convention plugin" rule kept, and coverage that includes container-tested code.
+- **Consequences:** `./gradlew test` needs no Docker; `./gradlew build`, `check` and `koverVerify` do (CLAUDE.md Testing, `verify-gates`). FND-02 adds its base classes and dependencies to a suite that already exists. Every module pays one more (empty) source set and a few `NO-SOURCE` tasks. Verified 2026-11-03: with no reachable daemon `:test-support:integrationTest` exits 1 with 11 tests failed, 0 passed, 0 skipped, the first with Testcontainers' `Could not find a valid Docker environment`. Docker Desktop stayed up: `DOCKER_HOST=tcp://127.0.0.1:1` alone still passes because Testcontainers falls through to the npipe, so the run also hid the OS from the test JVM ([gotcha](../knowledge/gotchas/testcontainers-tries-every-strategy-so-a-bad-docker-host-reaches-the-npipe.md)). Buys: one place that defines the suite, the "exactly one convention plugin" rule kept, and coverage that includes container-tested code.
 - **Date:** 2026-11-03
 
 ## 11. Log
@@ -911,3 +912,16 @@ Append-only, newest at the bottom. Every session on this item ends with an entry
 - **Environment:** the Docker base images `eclipse-temurin:25-jre-noble` (pinned by digest in the Dockerfile) and `testcontainers/ryuk:0.14.0` remain pulled locally; every `integrationTest` run uses them.
 - **Handed on (not FND-03 criteria):** GW-01 adds the consumer side of the image (a resolvable configuration for `mockProviderBootJar`, the jar path as a system property, a `GenericContainer` wrapper); GW-03 and GW-06 add scripted tool calls (ADR-FND-03-011); GW-02 confirms on a real socket that a committed error logs one mapper line plus Reactor Netty's `HttpServerOperations` line; a run with Docker stopped confirms that `integrationTest` fails rather than skips.
 - **Next:** two commits: the `gateway-app` `LoggableFailure` fix (`fix(gateway)`, `Roadmap: FND-04`), then FND-03 (`Roadmap: FND-03`).
+
+### 2026-11-03: Test gaps and second-review fixes
+- **Who:** implementer (subagent), with fixes from `gateway-reviewer`'s second pass
+- **Done, each test red before its fix unless noted:**
+  1. `OpenAiStreamIntegrationTest:82`: `usage.omit` with `include_usage` over HTTP sends no usage chunk, and every chunk keeps `"usage":null` (section 5, Usage). The behaviour already existed, so it was proven by removing `!plan.usage.omit` from the renderer: red, then restored.
+  2. After commit the mapper replaces any failure with a stackless `MockConnectionAbort`, and intentional aborts are decided by type only (`MockErrorWebExceptionHandler.kt:55`). `MockCommittedResponseIntegrationTest`, raw socket.
+  3. `ScenarioJson.isHeaderValue` mirrors Netty's value rule ([bug](../knowledge/bugs/mock-scenario-error-headers-not-validated.md)).
+  4. `RequestJournal.complete` decrements `inFlight` after the entry is visible. `RequestJournalTest:171` failed on its first round.
+  5. `LoggableFailure` keeps an identity `seen` set, as gateway-app's copy does.
+  6. `tools/smoke/stack-check.sh`: `grafana-host` passes only on a 3xx (it passed on 403 and 500), and `services` compares stdout only (a warning from one compose command failed it). `scripts/preflight.sh`: `stack_port` reads `export X=` and strips inline comments. Old and new versions run against stubs; the real stack gave 12 PASS.
+- **ADR-FND-03-012 closed:** a run without a reachable daemon fails and skips nothing; the line "a run with Docker stopped confirms ..." handed on at closing is done (the ADR has the numbers).
+- **Tests:** mock-provider 307 (`test`), 2 (`integrationTest`). Kover mock-provider 98.04%.
+- **Next:** commit (`Roadmap: FND-03`).

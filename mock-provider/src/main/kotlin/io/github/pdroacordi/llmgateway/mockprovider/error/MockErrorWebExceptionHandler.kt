@@ -9,7 +9,6 @@ import org.springframework.core.Ordered
 import org.springframework.http.HttpStatusCode
 import org.springframework.http.MediaType
 import org.springframework.web.server.ServerWebExchange
-import org.springframework.web.util.DisconnectedClientHelper
 import reactor.core.publisher.Mono
 
 /**
@@ -28,17 +27,7 @@ class MockErrorWebExceptionHandler(
         ex: Throwable,
     ): Mono<Void> {
         val response = exchange.response
-        if (response.isCommitted) {
-            // An intentional abort (`disconnect`, a `stall` at max-hold) is decided by type; the helper matches
-            // phrases in any cause, so it only lowers the log level of the rest.
-            if (ex is MockConnectionAbort || DisconnectedClientHelper.isClientDisconnectedException(ex)) {
-                log.debug("Response aborted after commit: {}", ex.javaClass.simpleName)
-            } else {
-                log.error("Request failed after the response was committed", LoggableFailure.of(ex))
-            }
-            // Reactor Netty then closes the connection without the terminating chunk.
-            return Mono.error(ex)
-        }
+        if (response.isCommitted) return Mono.error(abortAfterCommit(exchange, ex))
 
         val request = exchange.request
         val path = request.path.value()
@@ -61,6 +50,23 @@ class MockErrorWebExceptionHandler(
                 log.debug("Writing the error body failed: {}", failure.javaClass.simpleName)
                 Mono.empty()
             }
+    }
+
+    private fun abortAfterCommit(
+        exchange: ServerWebExchange,
+        ex: Throwable,
+    ): MockConnectionAbort {
+        // An intentional abort (`disconnect`, a `stall` at max-hold) is decided by type, never by phrases in a cause.
+        if (ex is MockConnectionAbort) {
+            log.debug("Response aborted after commit: {}", ex.javaClass.simpleName)
+            return ex
+        }
+        log.error("Request failed after the response was committed", LoggableFailure.of(ex))
+        // Reactor Netty closes the connection without the terminating chunk and logs what it gets: never `ex`, whose
+        // checkpoint names the raw query
+        // (docs/knowledge/gotchas/webflux-committed-error-reaches-netty-log-or-completes-normally.md).
+        val requestId = RequestRecord.of(exchange)?.requestId ?: UNCOUNTED_REQUEST_ID
+        return MockConnectionAbort("Aborted after commit, request $requestId")
     }
 
     private companion object {

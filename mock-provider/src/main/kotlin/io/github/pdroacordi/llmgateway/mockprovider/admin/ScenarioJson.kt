@@ -102,8 +102,8 @@ class ScenarioJson(
                     val param = "$path.headers.$name"
                     // Netty validates only when the error is written, which would turn a typo into a 500 per request.
                     if (!TOKEN.matches(name)) reject(param, "'$param' must be an HTTP field name (RFC 9110 token).")
-                    if (!value.isString || value.stringValue().any { it in FORBIDDEN_IN_VALUE }) {
-                        reject(param, "'$param' must be a string without CR, LF or NUL.")
+                    if (!value.isString || !isHeaderValue(value.stringValue())) {
+                        reject(param, "'$param' must be a string without leading blanks or control characters.")
                     }
                     name to value.stringValue()
                 }
@@ -204,7 +204,15 @@ class ScenarioJson(
 
         // RFC 9110 section 5.6.2.
         val TOKEN = Regex("""[!#$%&'*+\-.^_`|~0-9A-Za-z]+""")
-        val FORBIDDEN_IN_VALUE = setOf('\r', '\n', '\u0000')
+        const val DELETE = '\u007F'
         val COMPLETION_TOKENS = 1..4096
+
+        // Netty 4.2's rule for a response header value: the first character is above 0x20, later ones are not below
+        // 0x20 except a tab, and none is 0x7F.
+        fun isHeaderValue(value: String): Boolean =
+            value.withIndex().all { (index, char) ->
+                val allowed = if (index == 0) char > ' ' else char >= ' ' || char == '\t'
+                allowed && char != DELETE
+            }
     }
 }

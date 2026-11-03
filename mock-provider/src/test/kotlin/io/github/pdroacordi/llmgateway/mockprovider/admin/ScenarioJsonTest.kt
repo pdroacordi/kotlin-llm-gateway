@@ -106,6 +106,23 @@ class ScenarioJsonTest {
         assertEquals("steps", rejection.param)
     }
 
+    // Netty's rule: only the first character may not be a tab.
+    @Test
+    fun `an embedded tab and a trailing space in a header value are accepted`() {
+        val scenario = """{"steps":[{"error":{"status":429,"headers":{"x-a":"a\tb "}}}]}"""
+
+        assertEquals(
+            "a\tb ",
+            json
+                .parse(tree(scenario))
+                .steps
+                .single()
+                .behaviour.error
+                ?.headers
+                ?.get("x-a"),
+        )
+    }
+
     @ParameterizedTest(name = "{0} -> {1}")
     @CsvSource(
         delimiter = '|',
@@ -127,6 +144,12 @@ class ScenarioJsonTest {
             """{"steps":[{"error":{"status":429,"headers":{"x-a":"v\r\nx-b: injected"}}}]}|""" +
                 """steps[0].error.headers.x-a""",
             """{"steps":[{"error":{"status":429,"headers":{"x-a":"v\u0000"}}}]}|steps[0].error.headers.x-a""",
+            """{"steps":[{"error":{"status":429,"headers":{"x-a":"a\u0001b"}}}]}|steps[0].error.headers.x-a""",
+            """{"steps":[{"error":{"status":429,"headers":{"x-a":"a\u000bb"}}}]}|steps[0].error.headers.x-a""",
+            """{"steps":[{"error":{"status":429,"headers":{"x-a":"a\u007fb"}}}]}|steps[0].error.headers.x-a""",
+            """{"steps":[{"error":{"status":429,"headers":{"x-a":"\u007fb"}}}]}|steps[0].error.headers.x-a""",
+            """{"steps":[{"error":{"status":429,"headers":{"x-a":" v"}}}]}|steps[0].error.headers.x-a""",
+            """{"steps":[{"error":{"status":429,"headers":{"x-a":"\tv"}}}]}|steps[0].error.headers.x-a""",
             """{"steps":[{"error":{"status":429,"headers":{"":"v"}}}]}|steps[0].error.headers.""",
             """{"steps":[{"fault":{"kind":"explode"}}]}|steps[0].fault.kind""",
             """{"steps":[{"fault":{"kind":"stall","afterPieces":-1}}]}|steps[0].fault.afterPieces""",

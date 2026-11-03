@@ -2,7 +2,7 @@
 
 An open-source, self-hostable **LLM gateway** and **agent runtime**, in Kotlin and Spring Boot.
 
-> **Status: build skeleton.** The Gradle multi-module build, its quality gates and the architecture rules exist (`FND-01`); code continues with `FND-02`. See the [roadmap](docs/roadmap.md).
+> **Status: foundations done.** `FND-01` to `FND-04` are finished: the build and its quality gates, the mock provider, the local stack, and request IDs with the OpenAI error envelope. The gateway endpoints start with `GW-01`. See the [roadmap](docs/roadmap.md).
 
 ## What it does (v1 target)
 
@@ -28,7 +28,15 @@ Hexagonal Gradle modules: a plain-Kotlin core with ports and pure policies; adap
 
 ## Running locally
 
-Arrives with `FND-02` (local stack) and `FND-03` (mock provider). No provider account is needed to run the tests or the demo.
+No provider account is needed: tests and local runs use `mock-provider`. Gradle runs on JDK 21+ and provisions JDK 25 itself.
+
+```bash
+./gradlew test                                       # unit and Spring-context tests; no Docker
+./gradlew build                                      # everything, integrationTest included; needs Docker
+docker compose -f deploy/compose.yaml up -d --wait   # local stack
+bash tools/smoke/stack-check.sh                      # checks the stack
+./gradlew :mock-provider:bootRun                     # mock provider on port 8090
+```
 
 ## How this repository is built
 

@@ -33,3 +33,21 @@ Fixed in FND-03. `ScenarioJson.error` (`mock-provider/src/main/kotlin/io/github/
 ## Prevention
 
 Added for FND-03: `ScenarioJsonTest` "every rejection is a 400 naming the member" rows `:126` (the name `bad name`), `:127-128` (a value with `\r\n` that would inject a second header), `:129` (a NUL in the value) and `:130` (an empty name). `AdminApiIntegrationTest` "invalid scenarios are 400 naming the member and leave the stored scenarios unchanged" covers the store side of a rejection.
+
+## Revision (2026-11-03)
+
+The fix covers names but only part of the values. `FORBIDDEN_IN_VALUE` (`ScenarioJson.kt:207`, used at `:105`) rejects CR, LF and NUL, while Netty 4.2.19 rejects more on a response header, so such a scenario is still stored with 204 and every request that takes the step fails.
+
+Found in the second-pass review, on a real Reactor Netty 1.3.8 server with `response.headers.set("x-scenario", value)`:
+
+| Value | Netty | Client |
+|---|---|---|
+| `a<0x01>b` | `prohibited character 0x1 at index 1` | 500 |
+| `a<0x7F>b` | `prohibited character 0x7f at index 1` | 500 |
+| `a<0x0B>b` | `prohibited character 0xb at index 1` | 500 |
+| leading space | `prohibited character 0x20 at index 0` | 500 |
+| leading tab | `prohibited character 0x9 at index 0` | 500 |
+
+The failure is `IllegalArgumentException: Validation failed for header 'x-scenario'`, raised with the response uncommitted, so a mapper shaped like the mock's writes its 500 (client: `500` with the mapper's body; the mock's mapper also logs ERROR with a stack trace for a 5xx). `Serving.error` has already recorded `error_injected` with the scenario's status (`Serving.kt:200`), so the journal also disagrees with what the client got.
+
+Fixed in the second-review fix commit (`Roadmap: FND-03`). `ScenarioJson.isHeaderValue` (`ScenarioJson.kt:212`, used at `:105`) mirrors Netty's rule: a non-empty value's first character is above 0x20 and not 0x7F; later characters are not below 0x20 (tab excepted) and not 0x7F. `ScenarioJsonTest` "every rejection is a 400 naming the member" has a row for each value above, red before the fix, and `ScenarioJsonTest:111` accepts an embedded tab. The systems entry's limit line says the same.

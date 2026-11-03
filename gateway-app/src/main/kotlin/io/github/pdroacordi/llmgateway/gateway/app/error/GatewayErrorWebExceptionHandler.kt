@@ -43,42 +43,36 @@ class GatewayErrorWebExceptionHandler(
         ex: Throwable,
     ): Mono<Void> {
         val requestId = (exchange.attributes[RequestContext.ATTRIBUTE] as? RequestContext)?.requestId ?: ids.next()
-        // The helper matches phrases anywhere in the cause chain, so it only lowers the log level and never skips
-        // the write (docs/knowledge/gotchas/spring-disconnected-client-helper-matches-phrases-in-cause-chain.md).
-        val looksDisconnected = DisconnectedClientHelper.isClientDisconnectedException(ex)
-        if (!exchange.response.isCommitted) return writeReply(exchange, requestId, ex, looksDisconnected)
+        if (!exchange.response.isCommitted) return writeReply(exchange, requestId, ex)
 
         // Status and headers are already sent; GW-02 turns stream failures into an SSE error event first.
-        withMdc(requestId) {
-            if (looksDisconnected) {
-                log.debug("Client disconnected after the response was committed")
-            } else {
-                log.error("Request failed after the response was committed", LoggableFailure.of(ex))
-            }
-        }
-        return Mono.error(ex)
+        withMdc(requestId) { log.error("Request failed after the response was committed", LoggableFailure.of(ex)) }
+        return Mono.error(CommittedResponseAbort(requestId))
     }
 
     private fun writeReply(
         exchange: ServerWebExchange,
         requestId: RequestId,
         ex: Throwable,
-        looksDisconnected: Boolean,
     ): Mono<Void> {
         val request = exchange.request
         val reply = ex.toGatewayError(request.method.name(), request.path.value()).toReply(requestId)
-        logReply(reply, requestId, ex, looksDisconnected)
         val response = exchange.response
         prepare(response, reply.status, requestId)
         reply.headers.forEach { (name, value) -> response.headers.set(name, value) }
         return BodyInserters
             .fromValue(OpenAiErrorEnvelope.of(reply))
             .insert(response, WriterContext(request))
+            .doOnSuccess { logReply(reply, requestId, ex) }
             .onErrorResume { failure ->
+                // The helper matches phrases anywhere in a cause chain, so it is asked only about a write that failed,
+                // which confirms something went wrong with the connection
+                // (docs/knowledge/gotchas/spring-disconnected-client-helper-matches-phrases-in-cause-chain.md).
                 if (DisconnectedClientHelper.isClientDisconnectedException(failure)) {
                     withMdc(requestId) { log.debug("Client disconnected while the error envelope was written") }
                     Mono.empty()
                 } else {
+                    logReply(reply, requestId, ex)
                     writeFallback(response, requestId, reply, failure)
                 }
             }
@@ -94,7 +88,7 @@ class GatewayErrorWebExceptionHandler(
         withMdc(requestId) {
             log.error("Writing the error envelope failed; writing the constant 500 body", LoggableFailure.of(failure))
         }
-        if (response.isCommitted) return Mono.error(failure)
+        if (response.isCommitted) return Mono.error(CommittedResponseAbort(requestId))
         reply.headers.keys.forEach { response.headers.remove(it) }
         prepare(response, GatewayError.Internal.toReply(requestId).status, requestId)
         return response.writeWith(Mono.fromSupplier { response.bufferFactory().wrap(fallbackBody(requestId)) })
@@ -115,24 +109,11 @@ class GatewayErrorWebExceptionHandler(
         reply: ErrorReply,
         requestId: RequestId,
         ex: Throwable,
-        looksDisconnected: Boolean,
     ) = withMdc(requestId) {
-        when {
-            reply.status < SERVER_ERROR -> {
-                log.debug("Request rejected with status {} ({})", reply.status, reply.code)
-            }
-
-            looksDisconnected -> {
-                log.debug(
-                    "Request failed with status {} ({}); the client may have disconnected",
-                    reply.status,
-                    reply.code,
-                )
-            }
-
-            else -> {
-                log.error("Request failed with status {} ({})", reply.status, reply.code, LoggableFailure.of(ex))
-            }
+        if (reply.status < SERVER_ERROR) {
+            log.debug("Request rejected with status {} ({})", reply.status, reply.code)
+        } else {
+            log.error("Request failed with status {} ({})", reply.status, reply.code, LoggableFailure.of(ex))
         }
     }
 

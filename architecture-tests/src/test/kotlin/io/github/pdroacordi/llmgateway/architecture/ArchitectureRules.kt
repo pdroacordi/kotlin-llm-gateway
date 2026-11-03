@@ -24,7 +24,7 @@ class ModuleFile(
 fun String.isInPackage(prefix: String): Boolean = this == prefix || startsWith("$prefix.")
 
 // CLAUDE.md "Core modules are plain Kotlin"; adding a family here needs a local ADR (ADR-FND-01-007).
-// java.net and javax.net are on every classpath, so only these rules keep sockets and HTTP clients out of core.
+// The JDK packages are on every classpath, so only these rules keep sockets and HTTP clients out of core.
 val CORE_FORBIDDEN_PACKAGES: List<String> =
     listOf(
         "org.springframework",
@@ -41,6 +41,9 @@ val CORE_FORBIDDEN_PACKAGES: List<String> =
         "io.opentelemetry.exporter",
         "java.net",
         "javax.net",
+        "java.nio.channels",
+        "com.sun.net.httpserver",
+        "jdk.net",
         "okhttp3",
         "io.ktor.client",
         "org.apache.hc",
@@ -289,24 +292,28 @@ fun assertNoViolations(violations: List<String>) {
     check(violations.isEmpty()) { violations.joinToString(separator = "\n", prefix = "\n") }
 }
 
-/** Dotted names written in code, outside import and package lines, comments and string literals. */
+/**
+ * Dotted names written in code, outside import and package lines, comments, literals and backtick names. A name inside
+ * a string template (`"${java.net.Socket()}"`) stays hidden: [NOT_CODE] is a regex, not a parser.
+ */
 fun inlineQualifiedNames(text: String): Set<String> = QUALIFIED_NAME.findAll(codeOnly(text)).map { it.value }.toSet()
 
 /** Undotted capitalized names written in code, the candidates a star import can resolve. */
 fun simpleTypeNames(text: String): Set<String> = SIMPLE_TYPE_NAME.findAll(codeOnly(text)).map { it.value }.toSet()
 
-private fun codeOnly(text: String): String =
-    text
-        .replace(RAW_STRING, "\"\"")
-        .replace(BLOCK_COMMENT, " ")
-        .replace(STRING, "\"\"")
-        .replace(LINE_COMMENT, "")
-        .replace(IMPORT_OR_PACKAGE_LINE, "")
+private fun codeOnly(text: String): String = text.replace(NOT_CODE, " ").replace(IMPORT_OR_PACKAGE_LINE, "")
 
-private val RAW_STRING = Regex("\"\"\"[\\s\\S]*?\"\"\"")
-private val BLOCK_COMMENT = Regex("""/\*[\s\S]*?\*/""")
-private val STRING = Regex(""""(?:\\.|[^"\\\n])*"""")
-private val LINE_COMMENT = Regex("//.*")
+// One alternation, scanned left to right, so whichever opens first wins: `"/v1/*"` is a string, `// /v1/*` a comment,
+// and neither opens a block comment. Order matters only where one prefixes another: `"""` before `"`.
+private val NOT_CODE =
+    listOf(
+        "\"\"\"[\\s\\S]*?\"\"\"",
+        """/\*[\s\S]*?\*/""",
+        """"(?:\\.|[^"\\\n])*"""",
+        """'(?:\\.[^'\n]*|[^'\\\n])'""",
+        "//.*",
+        "`[^`\\n]*`",
+    ).joinToString("|").toRegex()
 private val IMPORT_OR_PACKAGE_LINE = Regex("""^\s*(import|package)\s.*$""", RegexOption.MULTILINE)
 private val QUALIFIED_NAME = Regex("""(?<![\w.])[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+""")
 private val SIMPLE_TYPE_NAME = Regex("""(?<![\w.])[A-Z]\w*""")

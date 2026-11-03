@@ -43,7 +43,7 @@ The graph above is the target. Built today: `gateway-core` (request IDs and the 
 - **Wire in the app module only.** `@Configuration` and `@Component` live in `*-app`; core classes take collaborators by constructor.
 - **The agent runtime is a gateway client.** It never imports gateway modules; it calls `/v1/chat/completions` with its own team key, so its traffic is limited, cached, guarded, traced and billed like anyone's.
 - **Data over branches.** Routes, the price catalog, guardrail policies and agent definitions are versioned data, not `when` branches.
-- **Non-blocking hot path.** WebFlux + coroutines ([ADR-006](docs/DECISIONS.md#adr-006)): `suspend` for one value, `Flow` for a stream. Never block an event-loop thread; blocking I/O runs on `Dispatchers.IO` inside an adapter. BlockHound runs in the integration tests.
+- **Non-blocking hot path.** WebFlux + coroutines ([ADR-006](docs/DECISIONS.md#adr-006)): `suspend` for one value, `Flow` for a stream. Never block an event-loop thread; blocking I/O runs on `Dispatchers.IO` inside an adapter. BlockHound runs in every app module's test JVMs.
 
 ## Kotlin conventions
 

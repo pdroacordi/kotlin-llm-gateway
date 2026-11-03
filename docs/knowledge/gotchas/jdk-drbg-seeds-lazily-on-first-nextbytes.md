@@ -21,6 +21,17 @@ On JDK 25.0.4 (Temurin), `SecureRandom.getInstance("DRBG")` only configures a `H
 - `AbstractDrbg.engineNextBytes` (JDK `src.zip`, `sun/security/provider/AbstractDrbg.java`) calls the `synchronized` `instantiateIfNecessary` on every draw. `HashDrbg.generateAlgorithm` is also `synchronized`, so one shared instance serializes every caller.
 - `reseedInterval` is `Integer.MAX_VALUE`, and `HashDrbg` increments an `int` counter per draw. After about 2^31 draws the counter overflows and the instance reseeds. A non-prediction-resistant reseed reads from the process-wide seeder DRBG in memory, not from a file, so it does not block.
 - `UUID.randomUUID()` uses `NativePRNG`, which does read a file per call (spring-framework#24027).
+- Under BlockHound (2026-11-03, a probe on a non-blocking thread; Linux is `eclipse-temurin:25-jdk`, 25.0.5; Windows is Temurin 25.0.4):
+
+| Call on a non-blocking thread | Linux | Windows |
+|---|---|---|
+| First draw of an unseeded DRBG | `FileInputStream#readBytes` | passes |
+| `UUID.randomUUID()` | `FileInputStream#readBytes` | passes |
+| 100 000 10-byte draws after one draw at startup | passes | passes |
+| `reseed()` after one draw at startup | passes | passes |
+| First draw of a second DRBG, seeder already up | passes | passes |
+
+Windows seeds natively, so BlockHound sees no read there: removing the startup draw leaves `BlockHoundIntegrationTest` green on Windows. Only a Linux run (CI) guards that draw.
 
 ## How to handle it
 

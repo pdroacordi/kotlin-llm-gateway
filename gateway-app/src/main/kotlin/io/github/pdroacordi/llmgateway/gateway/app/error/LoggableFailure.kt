@@ -1,5 +1,8 @@
 package io.github.pdroacordi.llmgateway.gateway.app.error
 
+import java.util.Collections
+import java.util.IdentityHashMap
+
 private const val MAX_DEPTH = 32
 private const val REACTOR_CHECKPOINT = "reactor.core.publisher.FluxOnAssembly\$OnAssemblyException"
 
@@ -14,13 +17,16 @@ internal class LoggableFailure private constructor(
     cause: Throwable?,
 ) : RuntimeException(description, cause) {
     companion object {
-        fun of(failure: Throwable): Throwable = copyOf(failure, 0)
+        fun of(failure: Throwable): Throwable =
+            copyOf(failure, 0, Collections.newSetFromMap<Throwable>(IdentityHashMap()).apply { add(failure) })
 
+        // `seen` stops a cycle through cause and suppressed, which depth alone would walk 2^MAX_DEPTH times.
         private fun copyOf(
             failure: Throwable,
             depth: Int,
+            seen: MutableSet<Throwable>,
         ): Throwable {
-            val cause = failure.cause?.takeIf { depth < MAX_DEPTH }?.let { copyOf(it, depth + 1) }
+            val cause = failure.cause?.takeIf { depth < MAX_DEPTH && seen.add(it) }?.let { copyOf(it, depth + 1, seen) }
             val copy = LoggableFailure(failure.toString(), cause)
             val (checkpoints, others) = failure.suppressed.partition { it.javaClass.name == REACTOR_CHECKPOINT }
             // A checkpoint cut the failure's own trace to its first frame and holds the full one
@@ -30,7 +36,10 @@ internal class LoggableFailure private constructor(
                     .map { it.stackTrace }
                     .firstOrNull { it.size > failure.stackTrace.size }
                     ?: failure.stackTrace
-            others.takeIf { depth < MAX_DEPTH }?.forEach { copy.addSuppressed(copyOf(it, depth + 1)) }
+            others
+                .takeIf { depth < MAX_DEPTH }
+                ?.filter(seen::add)
+                ?.forEach { copy.addSuppressed(copyOf(it, depth + 1, seen)) }
             return copy
         }
     }

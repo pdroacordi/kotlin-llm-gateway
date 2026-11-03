@@ -17,6 +17,13 @@ dependencies {
     implementation(lib("kotlin-reflect"))
     implementation(lib("kotlinx-coroutines-reactor"))
     testImplementation(lib("spring-boot-starter-webflux-test"))
+    // Installs BlockHound in every test JVM of an app module (ADR-FND-03-009).
+    testImplementation(lib("blockhound-junit-platform"))
+}
+
+// BlockHound on JDK 25 (FND-01 U8).
+tasks.withType<Test>().configureEach {
+    jvmArgs("-XX:+AllowRedefinitionToAddDeleteMethods")
 }
 
 kover {

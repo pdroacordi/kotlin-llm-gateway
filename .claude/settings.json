@@ -24,9 +24,18 @@
       "Bash(docker compose * down --volumes*)",
       "Bash(docker compose * down * -v*)",
       "Bash(docker compose * down * --volumes*)",
+      "Bash(docker compose down * -v*)",
+      "Bash(docker compose down * --volumes*)",
+      "Bash(docker-compose down -v*)",
+      "Bash(docker-compose down --volumes*)",
+      "Bash(docker-compose down * -v*)",
+      "Bash(docker-compose down * --volumes*)",
       "Bash(docker-compose * down -v*)",
       "Bash(docker-compose * down --volumes*)",
+      "Bash(docker-compose * down * -v*)",
+      "Bash(docker-compose * down * --volumes*)",
       "Bash(docker volume rm llmgw_*)",
+      "Bash(docker volume rm * llmgw_*)",
       "Bash(docker volume prune*)"
     ]
   },

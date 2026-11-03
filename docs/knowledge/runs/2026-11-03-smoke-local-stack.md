@@ -45,7 +45,7 @@ source_files:
 | S13 | `stop redis`, rerun the script | FAIL services/health/redis, exit non-zero | `FAIL services: expected [grafana jaeger otel-collector postgres prometheus redis redpanda ], running [grafana jaeger otel-collector postgres prometheus redpanda ]`; `FAIL health: not healthy: redis=absent`; `FAIL redis: redis-cli ping: service "redis" is not running`; the other 8 PASS; exit 1, 11.9 s | pass |
 | S14 | `start redis`, rerun | 11 PASS | Redis healthy 5.7 s after `start`; 11 PASS, exit 0, 19.1 s | pass |
 | S15 | Port held by a Windows process (scratch port 3199) | (systems entry: `up` fails with "port is already allocated") | `docker run -p 127.0.0.1:3199:6379` exit 0 while Python held `0.0.0.0:3199`; `127.0.0.1:3199` still answered `WINDOWS-PY`, not Redis (finding 1) | finding |
-| S16 | `down` without `-v` | no containers, volumes kept, ports free | 7 containers and `llmgw_default` removed; `llmgw_grafana-data`, `_postgres-data`, `_prometheus-data`, `_redpanda-data` kept; 5440, 6390, 19092, 4317, 4318, 16686, 9090, 3101 closed; `candidatus-*` containers still up, the Next.js server still on 3001 | pass |
+| S16 | `down` without `-v` | no containers, volumes kept, ports free | 7 containers and `llmgw_default` removed; `llmgw_grafana-data`, `_postgres-data`, `_prometheus-data`, `_redpanda-data` kept; 5440, 6390, 19092, 4317, 4318, 16686, 9090, 3101 closed; other projects' containers still up, the Next.js server still on 3001 | pass |
 
 Memory (S11), `docker stats` / limit, first sample right after S10 and second before `down`:
 

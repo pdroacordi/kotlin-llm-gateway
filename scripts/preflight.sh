@@ -54,8 +54,9 @@ stack_port() {
     local value
     value=$(printenv "$1" || true)
     if [ -z "$value" ] && [ -f deploy/.env ]; then
-        value=$(sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" deploy/.env | tail -1 | tr -d "\r\"'" |
-            sed 's/[[:space:]]*$//')
+        # As compose reads it: an optional `export`, and a comment only after a blank or as the whole value.
+        value=$(sed -n "s/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}$1[[:space:]]*=[[:space:]]*//p" deploy/.env |
+            tail -1 | tr -d "\r\"'" | sed -e 's/[[:space:]]\{1,\}#.*$//' -e 's/^#.*$//' -e 's/[[:space:]]*$//')
     fi
     printf '%s' "${value:-$2}"
 }
@@ -118,7 +119,6 @@ if command -v docker >/dev/null 2>&1; then
 else
     warn "docker not on PATH"
 fi
-
 
 # Living docs.
 if ! docs=$(bash scripts/docs-check.sh 2>&1); then

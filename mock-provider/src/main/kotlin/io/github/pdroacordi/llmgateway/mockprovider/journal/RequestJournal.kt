@@ -45,13 +45,15 @@ class RequestJournal(
         arrival: Arrival,
         entry: JournalEntry,
     ) {
-        inFlight.decrementAndGet()
         // Read once: a reset after this line writes into the discarded state, never into the new one.
         val current = state.get()
-        if (current.epoch != arrival.epoch) return
-        // Entry first, then its count: `stats` never counts an entry `requests` cannot show yet.
-        current.ring.add(entry)
-        current.count(entry.route, entry.model, entry.outcome.kind)
+        if (current.epoch == arrival.epoch) {
+            // Entry first, then its count: `stats` never counts an entry `requests` cannot show yet.
+            current.ring.add(entry)
+            current.count(entry.route, entry.model, entry.outcome.kind)
+        }
+        // Last: a caller that waits for inFlight to drop then finds the entry.
+        inFlight.decrementAndGet()
     }
 
     fun query(filter: JournalFilter): List<JournalEntry> =

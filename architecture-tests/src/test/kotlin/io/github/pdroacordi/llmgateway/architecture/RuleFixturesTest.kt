@@ -35,6 +35,32 @@ class RuleFixturesTest {
     }
 
     @Test
+    fun `ARCH-1 sees code after a string, comment, name or char that the old stripping took for an opening`() {
+        val violations = coreImportsArePlainKotlin(fixture("arch-1-fully-qualified-jdk-client"))
+        assertFlags(violations, "ARCH-1", "GlobInString.kt", "references java.net.http.HttpClient")
+        assertFlags(violations, "ARCH-1", "GlobInLineComment.kt", "references java.net.Socket")
+        assertFlags(violations, "ARCH-1", "QuoteInBacktickName.kt", "references java.net.Socket")
+        assertFlags(violations, "ARCH-1", "QuoteChar.kt", "references java.net.Socket")
+        assertFlags(violations, "ARCH-1", "QuoteInComments.kt", "references java.net.Socket")
+        assertFlags(violations, "ARCH-1", "QuoteInComments.kt", "references java.net.http.HttpClient")
+    }
+
+    @Test
+    fun `ARCH-1 fails on NIO channels and the JDK's own server and socket extensions`() {
+        val violations = coreImportsArePlainKotlin(fixture("arch-1-fully-qualified-jdk-client"))
+        assertFlags(violations, "ARCH-1", "NioAndJdkServers.kt", "imports java.nio.channels.SocketChannel")
+        assertFlags(violations, "ARCH-1", "NioAndJdkServers.kt", "references com.sun.net.httpserver.HttpServer")
+        assertFlags(violations, "ARCH-1", "NioAndJdkServers.kt", "references jdk.net.ExtendedSocketOptions")
+    }
+
+    @Test
+    fun `ARCH-1 ignores what literals, comments and backtick names hold, and string templates stay hidden`() {
+        val violations = coreImportsArePlainKotlin(fixture("arch-1-fully-qualified-jdk-client"))
+        assertTrue(violations.none { "AllowedLiterals.kt" in it }) { violations.toString() }
+        assertTrue(violations.none { "HiddenTemplate.kt" in it }) { violations.toString() }
+    }
+
+    @Test
     fun `ARCH-2 fails on a core file importing the app`() {
         val violations = coreDoesNotImportOuterLayers(fixture("arch-2-core-imports-app"))
         assertFlags(violations, "ARCH-2", "ImportsApp.kt", "$BASE_PACKAGE.gateway.app.GatewayApplication")

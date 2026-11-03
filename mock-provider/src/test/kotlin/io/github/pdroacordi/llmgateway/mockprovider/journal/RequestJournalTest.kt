@@ -166,6 +166,20 @@ class RequestJournalTest {
         )
     }
 
+    // A caller that waits for inFlight 0 (tests, the smoke) must then find the entry.
+    @Test
+    fun `when inFlight drops the entry is already visible`() {
+        Executors.newSingleThreadExecutor().use { completer ->
+            repeat(50_000) {
+                val arrival = journal.arrive()
+                val completion = completer.submit { journal.complete(arrival, entry(arrival.seq)) }
+                while (journal.stats().inFlight != 0) Thread.onSpinWait()
+                assertTrue(journal.query(JournalFilter()).any { seen -> seen.seq == arrival.seq }) { "${arrival.seq}" }
+                completion.get()
+            }
+        }
+    }
+
     private fun entry(
         seq: Long,
         route: String = "openai.chat",

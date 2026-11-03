@@ -267,12 +267,12 @@ fun GatewayError.toReply(requestId: RequestId): ErrorReply  // the section 4 tab
 4. Everything else gives `Internal`.
 
 `GatewayErrorWebExceptionHandler.handle`, in order:
-1. If the response is already committed, log at ERROR with the request ID and return `Mono.error(ex)` so the connection is closed. `DisconnectedClientHelper.isClientDisconnectedException` only lowers that log to DEBUG: it matches phrases such as "broken pipe" anywhere in the cause chain's messages, so it can never decide whether to write ([bug](../knowledge/bugs/error-mapper-disconnect-check-turns-errors-into-empty-200.md)).
+1. If the response is already committed, log at ERROR with the request ID and return `Mono.error(CommittedResponseAbort(requestId))`, a stackless stand-in, so the connection is closed and no checkpoint reaches Reactor Netty's log. `DisconnectedClientHelper.isClientDisconnectedException` is not asked about the original exception: it matches phrases such as "broken pipe" anywhere in the cause chain's messages ([bug](../knowledge/bugs/error-mapper-disconnect-check-turns-errors-into-empty-200.md)).
 2. Otherwise always write the envelope, whatever the exception looks like.
 3. Translate the exception and call `toReply(requestId)`. The request ID comes from the exchange attribute; if the filter never ran, one is generated here.
 4. Write the reply: set the status, set `Content-Type: application/json` and the reply headers, set `x-request-id` again, and write the DTO with the first `HttpMessageWriter` in `codecs.writers` that can write it as `application/json`.
 5. If writing fails, write a constant pre-serialized 500 envelope instead. A write that fails because the client is gone (the helper accepts the failure) is logged at DEBUG and completes.
-6. Log 5xx at ERROR with the stack trace (DEBUG when the helper accepts the exception) and 4xx at DEBUG (status, code, request ID; no exception message). The logged throwable is a copy without Reactor's assembly checkpoint, which Spring's `ExceptionHandlingWebHandler` attaches with the raw query string (`LoggableFailure`). Each log call runs inside `MDC.putCloseable("requestId", ...)`, because the mapper runs outside the coroutine.
+6. After the write, log 5xx at ERROR with the stack trace and 4xx at DEBUG (status, code, request ID; no exception message). A 5xx is not logged at ERROR only when its write failed and the helper accepts that failure (step 5). The logged throwable is a copy without Reactor's assembly checkpoint, which Spring's `ExceptionHandlingWebHandler` attaches with the raw query string (`LoggableFailure`). Each log call runs inside `MDC.putCloseable("requestId", ...)`, because the mapper runs outside the coroutine.
 
 Libraries:
 - `kotlinx-coroutines-slf4j` (`MDCContext`) is new in `gateway-app`: catalog alias `kotlinx-coroutines-slf4j`, version from the coroutines BOM.
@@ -318,10 +318,10 @@ sequenceDiagram
 | Client sends `x-request-id` | Ignored; a fresh ID is returned | The ID is the usage-event idempotency key (CLAUDE.md, Cost). A client-chosen value could repeat and suppress a billed event (ADR-FND-04-001). |
 | Invalid or repeated `x-client-request-id` | 400 `invalid_client_request_id` (fail-closed) | Same behaviour as OpenAI. Keeps control characters out of logs. |
 | Clock outside the UUIDv7 range | `IllegalStateException`, 500 | A configuration bug, not a client error. |
-| DRBG seeding | Done once in the bean method at startup, off the event loop | `UUID.randomUUID()`'s default `NativePRNG` reads `/dev/urandom` per call, which BlockHound reports as blocking (spring-framework#24027). Unverified that a seeded DRBG never reads entropy per call. The first BlockHound run (FND-02 or GW-02) checks `RequestIdGenerator.next()`. Fallback: seed a `java.util.SplittableRandom` from `SecureRandom` once at startup (unique, not unguessable). |
+| DRBG seeding | Done once in the bean method at startup, off the event loop | `UUID.randomUUID()`'s default `NativePRNG` reads `/dev/urandom` per call, which BlockHound reports as blocking (spring-framework#24027). Verified 2026-11-03 under BlockHound on the event loop (section 11): the seeded DRBG blocks nowhere, so the fallback (a `java.util.SplittableRandom` seeded from `SecureRandom` once at startup; unique, not unguessable) is not used. |
 | Exception from a filter, handler mapping, codec or handler, before commit | Envelope with the translated status | One mapper (ADR-FND-04-005). |
-| Exception after the response is committed (a stream) | ERROR log with the request ID. The error propagates and Reactor Netty closes the connection, so the client sees a truncated response. | Status and headers are already sent. **Boundary for GW-02:** catch failures inside the `Flow` before they escape, emit an SSE error event whose payload is this envelope (same `toReply` and DTO), then end the stream. |
-| Client disconnected | Before commit: the envelope is written as usual (a write to a closed connection fails harmlessly) and a write failure the helper attributes to the client is logged at DEBUG, not routed to the fallback. An exception the helper accepts is logged at DEBUG instead of ERROR. After commit: DEBUG log, the error propagates. | Not an error. Cancellation stays with the coroutine machinery: the mapper never sees a `CancellationException` from a client disconnect, because the request `Mono` is cancelled. A `TimeoutCancellationException` that reaches it means an adapter did not translate a timeout: 500 and ERROR. |
+| Exception after the response is committed (a stream) | ERROR log with the request ID. A stackless `CommittedResponseAbort` replaces the error and Reactor Netty closes the connection, so the client sees a truncated response. | Status and headers are already sent. **Boundary for GW-02:** catch failures inside the `Flow` before they escape, emit an SSE error event whose payload is this envelope (same `toReply` and DTO), then end the stream. |
+| Client disconnected | Before commit: the envelope is written as usual, and a write failure the helper attributes to the client is logged at DEBUG, not routed to the fallback; only then does a 5xx have no ERROR line. An exception that merely quotes a disconnect is logged at ERROR, because a write that succeeds proves the client was there. After commit: ERROR log and the stackless abort; nothing can confirm a disconnect there. | Not an error. Cancellation stays with the coroutine machinery: the mapper never sees a `CancellationException` from a client disconnect, because the request `Mono` is cancelled. A `TimeoutCancellationException` that reaches it means an adapter did not translate a timeout: 500 and ERROR. |
 | The envelope cannot be serialized | Constant pre-serialized 500 envelope | The guarantee "every error is an envelope" does not depend on the codec. |
 | Request rejected by Reactor Netty before WebFlux | Netty's own response, no envelope, no `x-request-id` | Outside the WebFlux chain; documented in section 4. |
 | Provider, Redis, Postgres, broker | n/a: FND-04 calls none. Section 4 reserves their error rows. | |
@@ -618,6 +618,16 @@ The cross-cutting summary is [ADR-015](../DECISIONS.md#adr-015). The reasoning l
 - **Consequences:** The rule set becomes ARCH-1 to ARCH-10 (CLAUDE.md Testing line). Its fixture follows [`architecture-rule-with-violating-fixture`](../knowledge/patterns/architecture-rule-with-violating-fixture.md). A typealias or subclass of a handler type declared inside `.error` and used elsewhere is not detected (names, not types); the bean-set assertion in `ErrorEnvelopeIntegrationTest` covers it. Buys: the "one place" rule of CLAUDE.md becomes a build failure instead of a review comment.
 - **Date:** 2026-11-03
 
+### ADR-FND-04-008: Startup warm-up of what the first request would do on an event loop
+- **Context:** The first BlockHound run in `gateway-app` (2026-11-03) failed on two first-use paths: `ReactiveFlowKt`'s static `ServiceLoader` read in every `CoWebFilter`, and kotlin-reflect's built-ins read and contended locks in every Kotlin annotated handler. Only `ProbeController` is an annotated handler today; GW-01 may add more.
+- **Options considered:**
+  - A) A BlockHound allowance for the two paths. Rejected: it hides a real stall of the event loop, and allowing `InvocableHandlerMethod$KotlinDelegate.invokeFunction` would also hide blocking in the handler it invokes.
+  - B) Warm kotlin-reflect in the test-only `ProbeController`. Rejected: the tests would pass while a production controller still stalled its first calls.
+  - C) One production bean, `EventLoopWarmup`, doing both in `afterSingletonsInstantiated`, for every Kotlin handler in `RequestMappingHandlerMapping`.
+- **Decision:** C. With no Kotlin handler registered it only initialises `ReactiveFlowKt`.
+- **Consequences:** A new Kotlin controller is warmed without further work, and startup pays the cost. Handlers registered after startup are not warmed. Coroutine `coRouter` handlers need none of it.
+- **Date:** 2026-11-03
+
 ## 11. Log
 
 Append-only, newest at the bottom. Every session on this item ends with an entry.
@@ -676,4 +686,22 @@ Append-only, newest at the bottom. Every session on this item ends with an entry
 - **Smoke n/a:** `gateway-smoke` needs FND-02 (stack) and FND-03 (mock provider). The HTTP behaviour is covered by the WebTestClient integration tests against the real app on a random port. The "Errors" line in the `gateway-smoke` skill runs in the first `gateway-tester` run after FND-03.
 - **Eval n/a:** no threshold, classifier or routing policy.
 - **Handed on (not FND-04 criteria):** the BlockHound check of `RequestIdGenerator.next()` (FND-02/GW-02); GW-02 confirms over a real stream that the committed path logs one line without the query string and emits the SSE error event; GW-01 checks `coRouter` context propagation if it uses them.
+- **Next:** commit (`Roadmap: FND-04`).
+
+### 2026-11-03: BlockHound in gateway-app; the DRBG question settled
+- **Who:** implementer (subagent, test-gap closing)
+- **Done:** BlockHound moved from `mock-provider/build.gradle.kts` to `llmgw.spring-app` (`blockhound-junit-platform`, `-XX:+AllowRedefinitionToAddDeleteMethods`), so `gateway-app`'s test JVMs run under it and the mock's are unchanged (its tests pass as before). New `EventLoopWarmup` (ADR-FND-04-008) and `BlockHoundIntegrationTest`, whose client uses a real socket.
+- **Red first:** without the warm-up 15 of 47 tests failed (`RandomAccessFile#readBytes` in `ReactiveFlowKt`, then `NoClassDefFoundError` for the rest of the JVM). With only `ReactiveFlowKt` warmed, 4 failed: all 2000 requests to `ProbeController` got 500 from kotlin-reflect ([gotcha](../knowledge/gotchas/kotlin-reflect-first-use-in-annotated-handlers-blocks-the-event-loop.md)). That also made the first version of the `Thread.sleep` test pass for the wrong call, so it now asserts `Blocking call! java.lang.Thread.sleep`.
+- **`RequestIdGenerator.next()` outcome:** the production DRBG passes BlockHound. 2000 real requests at concurrency 32, every ID drawn on a `webflux-http-*` thread (20 event loops observed), all 200 and distinct; 100 000 draws on a `parallel` thread. A `Thread.sleep` placed in `next()` turned the tests red, so the path is watched. The `SplittableRandom` fallback is not needed.
+- **Limit of that proof:** on Windows the first draw of an unseeded DRBG does not trip BlockHound either, because seeding is native: removing the startup draw left the suite green. On Linux (`eclipse-temurin:25-jdk`, 25.0.5, a standalone probe) the unseeded first draw and `UUID.randomUUID()` trip `FileInputStream#readBytes`, and after the startup draw 100 000 draws, `reseed()` and a second DRBG pass. The test guards the startup draw only in a Linux run ([gotcha](../knowledge/gotchas/jdk-drbg-seeds-lazily-on-first-nextbytes.md)). A contended `synchronized` block in the DRBG is invisible to BlockHound, so OPS-01 still measures that lock.
+- **Next:** none.
+
+### 2026-11-03: Second-review fixes
+- **Who:** implementer (subagent), from `gateway-reviewer`'s second pass
+- **Done, each test red before its fix:**
+  1. After commit the mapper returns a stackless `CommittedResponseAbort` (`GatewayErrorWebExceptionHandler.kt:50`, `:91`): Reactor Netty's log line carried the checkpoint's raw query on a real socket ([bug](../knowledge/bugs/committed-response-error-logged-twice-with-query-string.md)). `CommittedResponseIntegrationTest`, raw socket.
+  2. The helper no longer decides the level of the original exception: a 5xx is logged at ERROR after its write unless that write failed with a client disconnect (`:66`, `:71`), and an exception quoting a disconnect after commit aborts instead of ending normally ([bug](../knowledge/bugs/error-mapper-disconnect-check-turns-errors-into-empty-200.md)). Section 5 steps 1 and 6 and two failure rows amended. Because the line comes after the write, a test can see the response first, so two tests wait for it.
+  3. `LoggableFailure` keeps an identity `seen` set: a cycle through cause and suppressed took 2^32 steps.
+- **Not coded:** [bugs/gateway-body-limit-on-functional-route-gives-500](../knowledge/bugs/gateway-body-limit-on-functional-route-gives-500.md) goes to GW-01 (roadmap Notes, systems entry).
+- **Tests:** gateway-core 41, gateway-app 55, mock-provider 307, architecture-tests 48 (`test`); mock-provider 2, test-support 11 (`integrationTest`). Kover gateway-core 98.95%, gateway-app 97.42%, mock-provider 98.04%, merged 98.03%.
 - **Next:** commit (`Roadmap: FND-04`).

@@ -34,4 +34,8 @@ Use the helper to pick a log level, never to decide whether to write a response.
 
 ## Revision (2026-11-03)
 
-Fixed in FND-04. `GatewayErrorWebExceptionHandler.kt:48-49` keeps the helper's answer as `looksDisconnected` and always writes the envelope before commit; the answer only lowers the log level (`:53-57`, `:125`). At `:78` the helper is applied to the failure of the envelope write itself: a write failure it accepts is logged at DEBUG and completes, any other goes to the constant 500 fallback. The line numbers in "How to handle it" refer to the file before the fix. Guarded by `GatewayErrorWebExceptionHandlerTest:92` and `:103`.
+Superseded by the next revision. Fixed in FND-04. `GatewayErrorWebExceptionHandler.kt:48-49` keeps the helper's answer as `looksDisconnected` and always writes the envelope before commit; the answer only lowers the log level (`:53-57`, `:125`). At `:78` the helper is applied to the failure of the envelope write itself: a write failure it accepts is logged at DEBUG and completes, any other goes to the constant 500 fallback. The line numbers in "How to handle it" refer to the file before the fix. Guarded by `GatewayErrorWebExceptionHandlerTest:92` and `:103`.
+
+## Revision (2026-11-03, second review)
+
+Picking a log level from the original exception was also wrong: a 5xx quoting a disconnect went to a live client with only a DEBUG line. The helper is now asked only about a failed write (`GatewayErrorWebExceptionHandler.kt:71`), which confirms something happened to the connection. Use it for that and nothing else.

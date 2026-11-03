@@ -9,7 +9,7 @@ created: 2026-11-03
 updated: 2026-11-03
 source_files:
   - gradle/libs.versions.toml
-  - mock-provider/build.gradle.kts
+  - build-logic/src/main/kotlin/llmgw.spring-app.gradle.kts
 ---
 
 ## Summary

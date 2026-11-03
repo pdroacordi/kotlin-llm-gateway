@@ -6,7 +6,6 @@ import io.github.pdroacordi.llmgateway.gateway.app.request.RequestContext
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestIdGenerator
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -75,15 +74,79 @@ class GatewayErrorWebExceptionHandlerTest {
         )
     }
 
+    // Stackless and without suppression, so no Reactor checkpoint can ride on it into Reactor Netty's log line.
     @Test
-    fun `a committed response is not rewritten and the error propagates`() {
+    fun `a committed response is not rewritten and a stackless abort naming the request replaces the error`() {
+        val exchange = exchange()
+        val context = RequestContext(ids.next(), null)
+        exchange.attributes[RequestContext.ATTRIBUTE] = context
+        exchange.response.setComplete().block()
+
+        val thrown =
+            assertThrows<CommittedResponseAbort> {
+                handler().handle(exchange, IllegalStateException("mid-stream")).block()
+            }
+
+        assertTrue(context.requestId.toString() in thrown.message.orEmpty()) { thrown.message.orEmpty() }
+        assertFalse("mid-stream" in thrown.toString()) { thrown.toString() }
+        assertEquals(0, thrown.stackTrace.size)
+        thrown.addSuppressed(IllegalStateException("checkpoint"))
+        assertEquals(0, thrown.suppressed.size)
+    }
+
+    @Test
+    fun `an error quoting a disconnect after commit is logged at ERROR and aborts`(output: CapturedOutput) {
         val exchange = exchange()
         exchange.response.setComplete().block()
-        val failure = IllegalStateException("mid-stream")
 
-        val thrown = assertThrows<IllegalStateException> { handler().handle(exchange, failure).block() }
+        assertThrows<CommittedResponseAbort> { handler().handle(exchange, disconnectPhrase()).block() }
 
-        assertSame(failure, thrown)
+        assertEquals(1, errorLines(output).size) { output.all }
+    }
+
+    @Test
+    fun `a write failure after commit aborts instead of passing the failure on`() {
+        val exchange = exchange()
+        exchange.response.setWriteHandler { Mono.error(IllegalStateException("codec")) }
+
+        assertThrows<CommittedResponseAbort> {
+            handler().handle(exchange, ResponseStatusException(HttpStatus.NOT_FOUND)).block()
+        }
+    }
+
+    // A successful write proves the client was there, whatever the exception's cause quotes.
+    @Test
+    fun `a 5xx quoting a disconnect gets the envelope and one ERROR line`(output: CapturedOutput) {
+        val exchange = exchange()
+
+        handler().handle(exchange, disconnectPhrase()).block()
+
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, exchange.response.statusCode)
+        assertEquals("internal_error", JsonPath.parse(exchange.body()).read<String>("$.error.code"))
+        assertEquals(1, errorLines(output).size) { output.all }
+    }
+
+    @Test
+    fun `a 5xx whose write fails because the client is gone logs no ERROR line`(output: CapturedOutput) {
+        val exchange = exchange()
+        exchange.response.setWriteHandler { Mono.error(IOException("Broken pipe")) }
+
+        handler().handle(exchange, IllegalStateException("bug")).block()
+
+        assertTrue(errorLines(output).isEmpty()) { output.all }
+    }
+
+    @Test
+    fun `a 5xx whose write fails for another reason logs the error and the constant body is written`(
+        output: CapturedOutput,
+    ) {
+        val codecs = ServerCodecConfigurer.create().apply { registerDefaults(false) }
+        val exchange = exchange()
+
+        handler(codecs).handle(exchange, IllegalStateException("bug")).block()
+
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, exchange.response.statusCode)
+        assertEquals(2, errorLines(output).size) { output.all }
     }
 
     // DisconnectedClientHelper matches phrases in any cause's message, so this only looks like a disconnect
@@ -106,10 +169,14 @@ class GatewayErrorWebExceptionHandlerTest {
 
         handler().handle(exchange, ResponseStatusException(HttpStatus.NOT_FOUND)).block()
 
-        // Log lines start at column 0; stack frames are indented.
-        val errors = output.all.lines().filter { it.trimStart() == it && " ERROR " in it }
-        assertTrue(errors.isEmpty()) { errors.joinToString("\n") }
+        assertTrue(errorLines(output).isEmpty()) { output.all }
     }
+
+    // Log lines start at column 0; stack frames are indented.
+    private fun errorLines(output: CapturedOutput): List<String> =
+        output.all.lines().filter { it.trimStart() == it && " ERROR " in it }
+
+    private fun disconnectPhrase() = IllegalStateException("adapter", IOException("Connection reset by peer"))
 
     private fun handler(codecs: ServerCodecConfigurer = ServerCodecConfigurer.create()) =
         GatewayErrorWebExceptionHandler(codecs, ids)

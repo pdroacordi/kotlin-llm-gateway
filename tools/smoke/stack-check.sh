@@ -59,22 +59,25 @@ host_tcp_open() {
 # 1. Every service in the compose file is running. Each command's own exit status counts: a broken compose file
 # makes both print the same error, which would otherwise compare equal.
 check_services() {
-    local expected running expected_status running_status
-    expected=$(compose config --services 2>&1)
+    local expected running expected_status running_status errors
+    # Stdout only: a compose warning on stderr is not a service name.
+    errors=$(mktemp)
+    expected=$(compose config --services 2>"$errors")
     expected_status=$?
-    running=$(compose ps --services --status running 2>&1)
+    running=$(compose ps --services --status running 2>>"$errors")
     running_status=$?
     expected=$(echo "$expected" | tr -d '\r' | sort)
     running=$(echo "$running" | tr -d '\r' | sort)
     if [ "$expected_status" -ne 0 ]; then
-        fail services "compose config --services exited $expected_status: $(echo "$expected" | one_line)"
+        fail services "compose config --services exited $expected_status: $(one_line <"$errors")"
     elif [ "$running_status" -ne 0 ]; then
-        fail services "compose ps --services exited $running_status: $(echo "$running" | one_line)"
+        fail services "compose ps --services exited $running_status: $(one_line <"$errors")"
     elif [ -n "$expected" ] && [ "$expected" = "$running" ]; then
         pass services
     else
         fail services "expected [$(echo "$expected" | one_line)], running [$(echo "$running" | one_line)]"
     fi
+    rm -f "$errors"
 }
 
 # 2. Services with a healthcheck report healthy.
@@ -275,10 +278,11 @@ check_grafana_host() {
         fail grafana-host "POST /api/datasources with Host: rebind.example got $code and created datasource $name"
     elif [ "$found" != "404" ]; then
         fail grafana-host "could not tell whether $name exists: GET by name got $found (POST got $code)"
-    elif [ "${code:0:1}" = "2" ] || [ "$code" = "000" ]; then
-        fail grafana-host "POST /api/datasources with Host: rebind.example got $code"
-    else
+    elif [ "${code:0:1}" = "3" ]; then
+        # enforce_domain answers a foreign Host with a redirect; a 4xx or 5xx would be some other refusal.
         pass grafana-host
+    else
+        fail grafana-host "POST /api/datasources with Host: rebind.example got $code, expected a 3xx redirect"
     fi
 }
 

@@ -3,8 +3,6 @@ plugins {
 }
 
 dependencies {
-    // Installs BlockHound in every test JVM of this module (ADR-FND-03-009).
-    testImplementation(libs.blockhound.junit.platform)
     // Docker-backed tests only (ADR-016).
     "integrationTestImplementation"(platform(libs.testcontainers.bom))
     "integrationTestImplementation"(libs.testcontainers.core)
@@ -25,11 +23,6 @@ val mockProviderBootJar =
 
 artifacts {
     add(mockProviderBootJar.name, tasks.bootJar)
-}
-
-// BlockHound on JDK 25 (FND-01 U8).
-tasks.withType<Test>().configureEach {
-    jvmArgs("-XX:+AllowRedefinitionToAddDeleteMethods")
 }
 
 tasks.named<Test>("integrationTest") {

@@ -3,6 +3,7 @@ package io.github.pdroacordi.llmgateway.gateway.app.error
 import com.jayway.jsonpath.JsonPath
 import io.github.pdroacordi.llmgateway.gateway.app.ProbeController
 import io.github.pdroacordi.llmgateway.gateway.app.request.GatewayHeaders
+import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -26,6 +27,7 @@ import org.springframework.test.web.reactive.server.WebTestClient
 import org.springframework.web.bind.annotation.ControllerAdvice
 import org.springframework.web.reactive.handler.WebFluxResponseStatusExceptionHandler
 import org.springframework.web.server.WebExceptionHandler
+import java.time.Duration
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureWebTestClient
@@ -119,6 +121,8 @@ class ErrorEnvelopeIntegrationTest(
         assertEnvelope(result, 500, "internal_error", type = "server_error")
         assertTrue(requestId in message(result)) { message(result) }
         assertFalse(ProbeController.SECRET in result.bodyText()) { result.bodyText() }
+        // A 5xx is logged after its write, so the client can have the response first.
+        await().atMost(Duration.ofSeconds(5)).until { "[$requestId]" in output.all && " ERROR " in output.all }
         val errorLines = output.all.lines().filter { " ERROR " in it && "[$requestId]" in it }
         assertEquals(1, errorLines.size) { output.all }
         val stackTrace =

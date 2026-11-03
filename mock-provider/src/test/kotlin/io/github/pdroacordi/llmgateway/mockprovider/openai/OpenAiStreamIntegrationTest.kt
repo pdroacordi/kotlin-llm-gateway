@@ -18,6 +18,7 @@ import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.annotation.DirtiesContext
 import org.springframework.test.web.reactive.server.WebTestClient
+import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -65,12 +66,7 @@ class OpenAiStreamIntegrationTest {
         val body = chatBody("Agree on this", extra = ""","stream_options":{"include_usage":true}""")
         val plain = client.chat(body)
         val stream = client.chat(body.replaceFirst("{", """{"stream":true,"""))
-        val chunks =
-            stream
-                .bodyText()
-                .split("\n\n")
-                .filter { it.startsWith("data: {") }
-                .map { MAPPER.readTree(it.removePrefix("data: ")) }
+        val chunks = chunks(stream.bodyText())
         val text = chunks.mapNotNull { it.at("/choices/0/delta/content").stringValue(null) }.joinToString("")
         val usage = chunks.last().get("usage")
 
@@ -81,6 +77,30 @@ class OpenAiStreamIntegrationTest {
         assertEquals(12, chunks.size)
         assertTrue(stream.bodyText().endsWith("data: [DONE]\n\n"))
     }
+
+    @Test
+    fun `usage omit with include_usage sends no usage chunk and every chunk keeps usage null`() {
+        client.putScenario("mock-chat", """{"otherwise":{"usage":{"omit":true}}}""")
+
+        val stream =
+            client.chat(
+                chatBody("Omit it", extra = ""","stream":true,"stream_options":{"include_usage":true}"""),
+            )
+        val chunks = chunks(stream.bodyText())
+
+        assertEquals(200, stream.status.value())
+        assertTrue(chunks.isNotEmpty())
+        // FND-03 section 5, Usage: the usage chunk is the one with empty `choices`; the others say `"usage":null`.
+        assertTrue(chunks.all { it.has("usage") && it.get("usage").isNull }) { stream.bodyText() }
+        assertTrue(chunks.none { it.get("choices").isEmpty() }) { stream.bodyText() }
+        assertTrue(stream.bodyText().endsWith("data: [DONE]\n\n"))
+    }
+
+    private fun chunks(body: String): List<JsonNode> =
+        body
+            .split("\n\n")
+            .filter { it.startsWith("data: {") }
+            .map { MAPPER.readTree(it.removePrefix("data: ")) }
 
     private companion object {
         val MAPPER: JsonMapper = JsonMapper.builder().build()

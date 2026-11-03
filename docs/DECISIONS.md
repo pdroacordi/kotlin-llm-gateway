@@ -143,6 +143,7 @@ The gateway holds many concurrent, long-lived streaming responses (SSE) whose la
 
 ### Consequences
 - Blocking libraries are isolated in adapters on `Dispatchers.IO`; BlockHound in the integration tests catches violations.
+- 2026-11-03: BlockHound runs in every app module's test JVMs through `llmgw.spring-app`, not only in integration tests.
 - Whether persistence uses R2DBC or JDBC on `Dispatchers.IO` is decided in GW-04 (local ADR).
 - Reviewers check cancellation and structured concurrency (gateway-reviewer, priority 1).
 

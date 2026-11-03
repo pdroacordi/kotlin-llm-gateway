@@ -4,8 +4,10 @@ import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertTimeoutPreemptively
 import reactor.core.publisher.Mono
 import java.io.IOException
+import java.time.Duration
 
 class LoggableFailureTest {
     @Test
@@ -31,5 +33,21 @@ class LoggableFailureTest {
         assertEquals("java.io.IOException: socket", copy.cause?.message)
         assertEquals(listOf("java.lang.IllegalArgumentException: kept"), copy.suppressed.map { it.message })
         assertTrue("secret=1" !in copy.stackTraceToString()) { copy.stackTraceToString() }
+    }
+
+    // Two references per node: without the seen set the copy doubles at every level, up to MAX_DEPTH.
+    @Test
+    fun `a cycle through cause and suppressed is copied once per exception`() {
+        val first = IllegalStateException("first")
+        val second = IllegalArgumentException("second", first)
+        first.initCause(second)
+        first.addSuppressed(second)
+        second.addSuppressed(first)
+
+        val copy = assertTimeoutPreemptively(Duration.ofSeconds(5)) { LoggableFailure.of(first) }
+
+        assertEquals("java.lang.IllegalArgumentException: second", copy.cause?.message)
+        assertEquals(null, copy.cause?.cause)
+        assertEquals(0, copy.suppressed.size)
     }
 }

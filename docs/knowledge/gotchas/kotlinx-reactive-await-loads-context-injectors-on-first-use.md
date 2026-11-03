@@ -9,6 +9,7 @@ created: 2026-11-03
 updated: 2026-11-03
 source_files:
   - mock-provider/src/main/kotlin/io/github/pdroacordi/llmgateway/mockprovider/config/MockConfiguration.kt
+  - gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/web/EventLoopWarmup.kt
 ---
 
 ## Summary
@@ -19,8 +20,8 @@ In kotlinx-coroutines 1.11.0, `kotlinx.coroutines.reactive.ReactiveFlowKt`'s sta
 
 - `javap -c` on `kotlinx-coroutines-reactive-1.11.0.jar`: `ReactiveFlowKt.<clinit>` calls `ServiceLoader.load(ContextInjector, ContextInjector.getClassLoader())`, `.iterator()`, then `asSequence().toList()`. `MonoKt` and `AwaitKt` each reference `ReactiveFlowKt.injectCoroutineContext`.
 - `kotlinx-coroutines-reactor` registers `ReactorContextInjector` as a service, so the loader always opens jars.
-- Without BlockHound this is a single short block of an event loop at the first request. With BlockHound it fails that request, and only that one, so tests that do not run first can hide it.
+- Without BlockHound this is a single short block of an event loop at the first request. With BlockHound the static initializer fails on that request, and every later await in the JVM gets `NoClassDefFoundError: Could not initialize class ...ReactiveFlowKt`. In `gateway-app`, without the warm-up, 15 of 47 tests failed that way (2026-11-03).
 
 ## How to handle it
 
-Initialise the class at startup, where blocking is allowed: `Class.forName("kotlinx.coroutines.reactive.ReactiveFlowKt")` in a bean factory method (`MockConfiguration.kt:75`). `gateway-app` needs the same once BlockHound runs there (FND-02/GW-02).
+Initialise the class at startup, where blocking is allowed: `Class.forName("kotlinx.coroutines.reactive.ReactiveFlowKt")` in a bean factory method (`MockConfiguration.kt:75`). `gateway-app` does the same in `EventLoopWarmup` (`EventLoopWarmup.kt:19`).

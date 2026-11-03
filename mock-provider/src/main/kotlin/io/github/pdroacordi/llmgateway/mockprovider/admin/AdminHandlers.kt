@@ -5,6 +5,7 @@ import io.github.pdroacordi.llmgateway.mockprovider.error.reject
 import io.github.pdroacordi.llmgateway.mockprovider.journal.JournalEntry
 import io.github.pdroacordi.llmgateway.mockprovider.journal.JournalFilter
 import io.github.pdroacordi.llmgateway.mockprovider.journal.RequestJournal
+import io.github.pdroacordi.llmgateway.mockprovider.web.awaitDelay
 import io.github.pdroacordi.llmgateway.mockprovider.web.readJson
 import org.springframework.http.MediaType
 import org.springframework.web.reactive.function.server.ServerRequest
@@ -13,6 +14,9 @@ import org.springframework.web.reactive.function.server.bodyValueAndAwait
 import org.springframework.web.reactive.function.server.buildAndAwait
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.databind.node.ObjectNode
+import java.time.Duration
+import kotlin.time.TimeSource
+import kotlin.time.toKotlinDuration
 
 /** The mock's own control surface under `/__mock`: not counted, not journaled (FND-03 section 4, Admin API). */
 class AdminHandlers(
@@ -20,7 +24,10 @@ class AdminHandlers(
     private val store: ScenarioStore,
     private val journal: RequestJournal,
     private val scenarios: ScenarioJson,
+    readWait: Duration,
 ) {
+    private val readWait = readWait.toKotlinDuration()
+
     suspend fun putScenario(request: ServerRequest): ServerResponse {
         val scenario = scenarios.parse(request.readJson(mapper))
         store.put(request.pathVariable("model"), scenario)
@@ -53,6 +60,7 @@ class AdminHandlers(
     }
 
     suspend fun requests(request: ServerRequest): ServerResponse {
+        awaitJournalSettled()
         val root = mapper.createObjectNode()
         val data = root.putArray("data")
         journal.query(filter(request)).forEach { data.add(entry(it)) }
@@ -60,6 +68,7 @@ class AdminHandlers(
     }
 
     suspend fun stats(): ServerResponse {
+        awaitJournalSettled()
         val stats = journal.stats()
         val root = mapper.createObjectNode().put("lastSeq", stats.lastSeq).put("inFlight", stats.inFlight)
         val counts = root.putArray("counts")
@@ -88,6 +97,14 @@ class AdminHandlers(
         store.clear()
         journal.reset()
         return ServerResponse.noContent().buildAndAwait()
+    }
+
+    // An entry is written after its response reaches the client, so a read right after a response could miss it.
+    // `complete` decrements inFlight last, so 0 means every entry is visible; a held request delays a read by
+    // `readWait` at most (docs/knowledge/bugs/mock-journal-entry-visible-after-the-response.md).
+    private suspend fun awaitJournalSettled() {
+        val started = TimeSource.Monotonic.markNow()
+        while (journal.inFlight() != 0 && started.elapsedNow() < readWait) awaitDelay(SETTLED_POLL_MS)
     }
 
     private fun filter(request: ServerRequest): JournalFilter {
@@ -162,4 +179,8 @@ class AdminHandlers(
 
     private suspend fun json(root: ObjectNode): ServerResponse =
         ServerResponse.ok().contentType(MediaType.APPLICATION_JSON).bodyValueAndAwait(mapper.writeValueAsString(root))
+
+    private companion object {
+        const val SETTLED_POLL_MS = 1L
+    }
 }

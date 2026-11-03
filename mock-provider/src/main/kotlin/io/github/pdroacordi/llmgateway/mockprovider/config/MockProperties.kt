@@ -64,10 +64,13 @@ data class MockProperties(
         val maxBodyBytes: Int = DEFAULT_MAX_BODY_BYTES,
         /** `false` for load runs: bodies are not kept. */
         val captureBodies: Boolean = true,
+        /** The longest `/__mock/stats` and `/__mock/requests` wait for requests in flight before answering. */
+        val readWait: Duration = Duration.ofMillis(DEFAULT_READ_WAIT_MS),
     ) {
         init {
             require(capacity in 1..MAX_CAPACITY) { "mock.journal.capacity must be 1..100000" }
             require(maxBodyBytes >= 0) { "mock.journal.max-body-bytes must not be negative" }
+            require(!readWait.isNegative) { "mock.journal.read-wait must not be negative" }
         }
     }
 
@@ -80,5 +83,6 @@ data class MockProperties(
         const val DEFAULT_CAPACITY = 1000
         const val MAX_CAPACITY = 100_000
         const val DEFAULT_MAX_BODY_BYTES = 16_384
+        const val DEFAULT_READ_WAIT_MS = 250L
     }
 }

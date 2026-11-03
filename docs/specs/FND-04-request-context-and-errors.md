@@ -705,3 +705,8 @@ Append-only, newest at the bottom. Every session on this item ends with an entry
 - **Not coded:** [bugs/gateway-body-limit-on-functional-route-gives-500](../knowledge/bugs/gateway-body-limit-on-functional-route-gives-500.md) goes to GW-01 (roadmap Notes, systems entry).
 - **Tests:** gateway-core 41, gateway-app 55, mock-provider 307, architecture-tests 48 (`test`); mock-provider 2, test-support 11 (`integrationTest`). Kover gateway-core 98.95%, gateway-app 97.42%, mock-provider 98.04%, merged 98.03%.
 - **Next:** commit (`Roadmap: FND-04`).
+
+### 2026-11-03: Startup draw proven on Linux
+- **Who:** implementer (subagent)
+- **Done:** Closes the limit in "BlockHound in gateway-app". In a Linux container (`eclipse-temurin:25-jdk`, 25.0.5) `gateway-app`'s 55 tests pass. Removing the startup draw from a throwaway copy failed 3 of the 4 `BlockHoundIntegrationTest` tests, the 100 000 draws with `Blocking call! java.io.FileInputStream#readBytes`, so a Linux run guards that draw.
+- **Next:** none.

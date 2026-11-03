@@ -132,6 +132,7 @@ class MockConfiguration {
                 generation.store,
                 journal,
                 ScenarioJson(generation.mapper, properties.maxHold.toMillis()),
+                properties.journal.readWait,
             )
         return MockRoutes.routes(handlers, AnthropicHandler(generation, anthropic), admin)
     }

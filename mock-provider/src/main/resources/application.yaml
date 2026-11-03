@@ -56,4 +56,5 @@ mock:
     capacity: 1000
     max-body-bytes: 16384
     capture-bodies: true
+    read-wait: 250ms
   max-hold: 300s

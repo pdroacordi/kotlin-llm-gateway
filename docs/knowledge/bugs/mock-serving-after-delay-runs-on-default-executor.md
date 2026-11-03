@@ -40,6 +40,6 @@ Fixed in FND-03. Every wait goes through `awaitDelay` (`mock-provider/src/main/k
 Added for FND-03:
 
 - `ServingThreadIntegrationTest:58` "a handler resumes on a Reactor parallel thread after the wait" (the thread name starts with `parallel-`, never `DefaultExecutor`); `:73` "BlockHound catches a blocking call made after the wait" (a `Thread.sleep(1)` after `awaitDelay` gives 500); `:87` a reply after scenario latency is still served, stream and non-stream.
-- `ReactorDelayTest:15` pins the cause (`delay` under `Unconfined` resumes on `DefaultExecutor`) and `:22` the fix (`awaitDelay` resumes on `parallel-*`), so a Spring or kotlinx upgrade that changes either shows up.
+- `ReactorDelayTest:17` pins the cause (`delay` under `Unconfined` does not resume on a `parallel` thread; the name of the thread it does resume on differs by platform) and `:22` the fix (`awaitDelay` resumes on `parallel-*`), so a Spring or kotlinx upgrade that changes either shows up.
 - The spec's deliberate `Thread.sleep` violation now also fails when placed after a latency wait.
 - [patterns/raw-sse-frames-flushed-per-event](../patterns/raw-sse-frames-flushed-per-event.md) says to wait on a Reactor timer, never `kotlinx.coroutines.delay`; GW-02 follows it when the gateway streams.

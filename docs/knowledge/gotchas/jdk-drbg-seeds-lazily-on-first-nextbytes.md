@@ -31,7 +31,7 @@ On JDK 25.0.4 (Temurin), `SecureRandom.getInstance("DRBG")` only configures a `H
 | `reseed()` after one draw at startup | passes | passes |
 | First draw of a second DRBG, seeder already up | passes | passes |
 
-Windows seeds natively, so BlockHound sees no read there: removing the startup draw leaves `BlockHoundIntegrationTest` green on Windows. Only a Linux run (CI) guards that draw.
+Windows seeds natively, so BlockHound sees no read there: removing the startup draw leaves `BlockHoundIntegrationTest` green on Windows. Only a Linux run (CI) guards that draw: removing it in a Linux container failed 3 of the 4 tests, with `FileInputStream#readBytes`.
 
 ## How to handle it
 

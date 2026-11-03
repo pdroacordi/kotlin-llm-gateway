@@ -201,7 +201,8 @@ class JournalIntegrationTest(
 
     @Test
     fun `reset empties counts, scenarios and journal, keeps lastSeq, and drops a request in flight across it`() {
-        client.putScenario("slow", """{"otherwise":{"latency":{"ttftMs":600}}}""")
+        // Outlasts the two bounded reads before the reset, each delayed by mock.journal.read-wait while it is held.
+        client.putScenario("slow", """{"otherwise":{"latency":{"ttftMs":1500}}}""")
         client.chat(chatBody("before"))
         val inFlight =
             CompletableFuture.supplyAsync {

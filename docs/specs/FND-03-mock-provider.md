@@ -520,6 +520,7 @@ The mock is a dependency of tests, not of production. It has no dependency of it
 | `mock.journal.capacity` | 1000 | entries, 1..100000 |
 | `mock.journal.max-body-bytes` | 16384 | bytes |
 | `mock.journal.capture-bodies` | `true` | |
+| `mock.journal.read-wait` | `250ms` | longest wait of `/__mock/stats` and `/__mock/requests` for requests in flight (2026-11-03) |
 | `mock.max-hold` | `300s` | `Duration` |
 
 Every property can be set from the environment with Boot's relaxed binding (`MOCK_DEFAULTS_LATENCY_TTFT=50ms`), which is how a smoke or k6 run fixes the upstream latency without admin calls.
@@ -924,4 +925,13 @@ Append-only, newest at the bottom. Every session on this item ends with an entry
   6. `tools/smoke/stack-check.sh`: `grafana-host` passes only on a 3xx (it passed on 403 and 500), and `services` compares stdout only (a warning from one compose command failed it). `scripts/preflight.sh`: `stack_port` reads `export X=` and strips inline comments. Old and new versions run against stubs; the real stack gave 12 PASS.
 - **ADR-FND-03-012 closed:** a run without a reachable daemon fails and skips nothing; the line "a run with Docker stopped confirms ..." handed on at closing is done (the ADR has the numbers).
 - **Tests:** mock-provider 307 (`test`), 2 (`integrationTest`). Kover mock-provider 98.04%.
+- **Next:** commit (`Roadmap: FND-03`).
+
+### 2026-11-03: First Linux CI run
+- **Who:** implementer (subagent)
+- **Found:** CI on HEAD 0eeaf7d failed `:mock-provider:test` with two tests that never failed on Windows.
+- **Done:**
+  1. `GET /__mock/stats` and `GET /__mock/requests` wait until `inFlight` is 0, at most `mock.journal.read-wait` (250 ms), then answer with what is there (`AdminHandlers.kt:105`, systems contract rule 7, [bug](../knowledge/bugs/mock-journal-entry-visible-after-the-response.md)). `JournalReadWaitIntegrationTest` holds an arrival open in the real journal, so it was red on any machine before the fix. The polls for `inFlight != 0` keep their meaning, each read arriving up to the bound later. `JournalIntegrationTest`'s reset test does two reads inside its hold, so that hold went from 600 ms to 1500 ms. No query flag was needed.
+  2. `ReactorDelayTest:17` pins that plain `delay` does not resume on a `parallel-` thread, not the third-party thread name; CI saw `Test worker @coroutine#1742` where Windows saw `DefaultExecutor`, and the cause is not established ([gotcha](../knowledge/gotchas/spring-coroutine-handlers-resume-on-default-executor-after-delay.md)).
+- **Linux proof:** `./gradlew build --no-daemon --continue` in `eclipse-temurin:25-jdk` (25.0.5) from a repo snapshot, Docker socket mounted: `BUILD SUCCESSFUL`, `koverVerify` included, 0 skipped. `test`: gateway-core 41, gateway-app 55, mock-provider 310, architecture-tests 48, test-support 14; `integrationTest`: mock-provider 2, test-support 11. The first attempt failed only `integrationTest`, on `Could not connect to Ryuk at 172.17.0.1`; `TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal` fixed that.
 - **Next:** commit (`Roadmap: FND-03`).

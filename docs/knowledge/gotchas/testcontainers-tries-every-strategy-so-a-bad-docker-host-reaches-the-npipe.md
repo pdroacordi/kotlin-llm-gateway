@@ -28,3 +28,7 @@ allprojects { tasks.withType<Test>().configureEach { systemProperty("os.name", "
 ```
 
 `DOCKER_HOST=tcp://127.0.0.1:1 ./gradlew :test-support:integrationTest --rerun-tasks --no-configuration-cache --init-script <file>` then leaves the bad address as the only strategy: exit 1, 11 failed, 0 passed, 0 skipped, `IllegalStateException: Could not find a valid Docker environment`, and `Previous attempts to find a Docker environment failed. Will not retry` for the rest (2026-11-03, ADR-FND-03-012).
+
+## Related: Testcontainers inside a container on Docker Desktop
+
+With the Docker socket mounted into a Linux container, every suite failed with `Could not connect to Ryuk at 172.17.0.1:<port>`: Testcontainers took the bridge gateway as the host, and published ports did not answer there. `-e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal --add-host=host.docker.internal:host-gateway` fixed it (Docker Desktop on WSL2, 2026-11-03).

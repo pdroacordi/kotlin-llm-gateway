@@ -246,7 +246,7 @@ class Serving(
 
 /**
  * Waits [ms] on Reactor's `parallel` timer, so the caller resumes on a `parallel` thread (one per core, watched by
- * BlockHound). `delay` under Spring's `Dispatchers.Unconfined` would resume on kotlinx's single DefaultExecutor thread
+ * BlockHound). `delay` under Spring's `Dispatchers.Unconfined` would resume on a thread BlockHound does not watch
  * (docs/knowledge/gotchas/spring-coroutine-handlers-resume-on-default-executor-after-delay.md). Cancellation cancels
  * the timer.
  */

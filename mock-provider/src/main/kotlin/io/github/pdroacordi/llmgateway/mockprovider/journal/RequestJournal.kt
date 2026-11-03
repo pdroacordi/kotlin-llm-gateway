@@ -56,6 +56,8 @@ class RequestJournal(
         inFlight.decrementAndGet()
     }
 
+    fun inFlight(): Int = inFlight.get()
+
     fun query(filter: JournalFilter): List<JournalEntry> =
         state
             .get()

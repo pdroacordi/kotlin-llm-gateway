@@ -1,0 +1,31 @@
+# Gradle, Kotlin, JVM
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+.kotlin/
+*.class
+*.log
+*.hprof
+hs_err_pid*
+
+# IDEs
+.idea/
+*.iml
+out/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+
+# Clean-room denylist (CLAUDE.md rule 1): local only, never committed
+.clean-room-denylist
+
+# Claude Code per-user settings
+.claude/settings.local.json

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Clean-room scan of staged additions, then living-docs consistency (CLAUDE.md rule 1, docs-update skill).
+bash scripts/clean-room-scan.sh || exit 1
+exec bash scripts/docs-check.sh

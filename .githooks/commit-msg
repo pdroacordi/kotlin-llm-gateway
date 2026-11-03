@@ -1,0 +1,32 @@
+#!/bin/sh
+# Commit message rules (CLAUDE.md, Commits): semantic subject of at most 72 characters,
+# feat/fix/perf bodies end with "Roadmap: <ID>", no AI co-author trailer.
+msg_file="$1"
+subject=$(grep -vE '^[[:space:]]*#' "$msg_file" | head -n 1)
+
+case "$subject" in
+    "Merge "*|"Revert "*|"fixup! "*|"squash! "*) exit 0 ;;
+esac
+
+if ! printf '%s\n' "$subject" | grep -qE '^(feat|fix|perf|refactor|test|docs|build|ci|chore|style|revert)(\([a-z0-9-]+\))?!?: .+'; then
+    echo "commit-msg: the subject must be 'type(scope): summary' (CLAUDE.md, Commits)"
+    echo "  got: $subject"
+    exit 1
+fi
+if [ "${#subject}" -gt 72 ]; then
+    echo "commit-msg: the subject is ${#subject} characters; at most 72"
+    exit 1
+fi
+case "$subject" in
+    feat*|fix*|perf*)
+        if ! grep -qE '^Roadmap: [A-Z]+-[0-9]+' "$msg_file"; then
+            echo "commit-msg: feat, fix and perf commits end with 'Roadmap: <ID>' (docs/roadmap.md)"
+            exit 1
+        fi
+        ;;
+esac
+if grep -qiE '^Co-Authored-By:.*(claude|anthropic)' "$msg_file"; then
+    echo "commit-msg: no AI co-author trailer (CLAUDE.md, Commits)"
+    exit 1
+fi
+exit 0

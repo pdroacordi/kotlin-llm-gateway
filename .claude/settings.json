@@ -1,0 +1,38 @@
+{
+  "includeCoAuthoredBy": false,
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew *)",
+      "Bash(bash scripts/preflight.sh*)",
+      "Bash(bash scripts/docs-check.sh*)",
+      "Bash(bash scripts/clean-room-scan.sh*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(docker compose -f deploy/compose.yaml ps*)",
+      "Bash(docker compose -f deploy/compose.yaml logs*)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git commit --no-verify*)",
+      "Bash(git commit -n *)",
+      "Bash(docker compose -f deploy/compose.yaml down -v*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/preflight.sh\" --quiet || true",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

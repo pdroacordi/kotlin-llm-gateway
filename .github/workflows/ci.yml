@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Living docs consistency
+        run: bash scripts/docs-check.sh
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect the Gradle build
+        id: gradle
+        run: |
+          if [ -f gradlew ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "No Gradle build yet (FND-01)"; fi
+      - uses: actions/setup-java@v4
+        if: steps.gradle.outputs.present == 'true'
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.gradle.outputs.present == 'true'
+      - name: Build (tests, coverage, static analysis, architecture rules)
+        if: steps.gradle.outputs.present == 'true'
+        run: ./gradlew build --console=plain

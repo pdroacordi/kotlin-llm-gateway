@@ -18,7 +18,17 @@
       "Bash(git push -f*)",
       "Bash(git commit --no-verify*)",
       "Bash(git commit -n *)",
-      "Bash(docker compose -f deploy/compose.yaml down -v*)"
+      "Bash(docker compose -f deploy/compose.yaml down -v*)",
+      "Bash(docker compose down -v*)",
+      "Bash(docker compose down --volumes*)",
+      "Bash(docker compose * down -v*)",
+      "Bash(docker compose * down --volumes*)",
+      "Bash(docker compose * down * -v*)",
+      "Bash(docker compose * down * --volumes*)",
+      "Bash(docker-compose * down -v*)",
+      "Bash(docker-compose * down --volumes*)",
+      "Bash(docker volume rm llmgw_*)",
+      "Bash(docker volume prune*)"
     ]
   },
   "hooks": {

@@ -16,6 +16,7 @@ sequenceDiagram
     participant U as UsageSink
 
     C->>API: POST /v1/chat/completions
+    API->>API: assign x-request-id (UUIDv7), validate x-client-request-id
     API->>A: resolve API key
     A-->>API: team
     API->>RL: reserve(team, estimated tokens)
@@ -47,6 +48,7 @@ sequenceDiagram
     API-->>C: 200 or SSE stream + x-gateway-* headers
 ```
 
+- Every error in the diagram (429, 400 guardrail) is written by the one mapper, `GatewayErrorWebExceptionHandler`, as the OpenAI envelope and carries `x-request-id` (FND-04).
 - Rate limiting runs first so a rejected request costs one Redis call.
 - Input guardrails run before the cache: the key is computed on the redacted prompt, and a prompt blocked today is not served from a cache filled before the rule existed.
 - On a stream, output rules scan a sliding window (GRD-05), and reconciliation and the usage event happen when the stream ends or the client disconnects.

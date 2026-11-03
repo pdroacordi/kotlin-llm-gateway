@@ -4,4 +4,5 @@ plugins {
 
 dependencies {
     implementation(project(":gateway-core"))
+    implementation(libs.kotlinx.coroutines.slf4j)
 }

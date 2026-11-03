@@ -325,6 +325,48 @@ ADR-005 lists ten target modules. FND-01 builds the Gradle skeleton and the Kons
 - Spring wiring annotations are allowed only in modules with the `app` role; if FND-03 makes `mock-provider` a Spring Boot app it changes that module's role, with a local ADR.
 - Details and the rule list: [`specs/FND-01-gradle-skeleton.md`](specs/FND-01-gradle-skeleton.md) (ADR-FND-01-005, ADR-FND-01-007).
 
+---
+
+<a id="adr-015"></a>
+## ADR-015: Request ID and error contract
+
+- **Status:** Accepted
+- **Date:** 2026-11-03
+
+### Context
+GW-01, GW-02, GW-04, RL-01, GRD-01, COST-02, COST-03, OBS-01 and CLI-01 all produce or consume request IDs and error responses. Each of them needs the same ID semantics and the same error shape:
+- CLAUDE.md makes usage events idempotent by request ID.
+- ADR-004 promises OpenAI compatibility: OpenAI returns `x-request-id`, accepts `X-Client-Request-Id`, and SDKs read `{"error":{"message","type","param","code"}}` and pick the exception class by status.
+- CLAUDE.md asks for one place that maps failures to that envelope.
+
+### Options
+Full options and reasoning in [FND-04](specs/FND-04-request-context-and-errors.md), ADR-FND-04-001 to -007. In short:
+- Request ID: accept the client's value; always generate; or a gateway-specific header.
+- Error format: the OpenAI envelope or RFC 9457 problem details.
+- Mapping: controller advice plus Boot's handler, or one `WebExceptionHandler`.
+
+### Decision
+- **Request ID:**
+  - The gateway generates a UUIDv7 for every request and returns it in `x-request-id` on every response WebFlux handles, errors and 404s included.
+  - A request's own `x-request-id` is ignored.
+  - A client may send `x-client-request-id`: 1 to 512 printable ASCII characters, echoed back, otherwise 400.
+  - The request ID is the usage-event idempotency key and is never the trace ID. OBS-01 records it on the server span as `http.response.header.x-request-id`.
+- **Errors:**
+  - Every error body is the OpenAI envelope, exactly four members, `application/json`, never problem+json.
+  - Expected failures are variants of the sealed `GatewayError` in `gateway-core`. One table there gives each variant its status, `type` (mirroring OpenAI's value for the same condition) and `code` (the stable discriminator).
+  - A shipped (status, type, code) row never changes; a new condition gets a new code.
+  - Messages never carry request content or exception messages; 5xx messages end with the request ID.
+  - The reserved rows for 401, 403, 404 model, 429, 429 quota, guardrail 400, 502, 503 and 504 are in FND-04 section 4.
+- **One mapper per app module:**
+  - It lives only in `<app root>.error` (Konsist ARCH-10): a `WebExceptionHandler` that replaces Spring Boot's default, with no `@ControllerAdvice` anywhere.
+  - Handlers and filters raise `GatewayErrorException(GatewayError)`.
+  - After the response is committed (streams), the error becomes an SSE error event carrying the same envelope (GW-02).
+
+### Consequences
+- Each later item adds its variant and table row and inherits the request ID, the envelope and `x-request-id` on its errors without further work.
+- AGT-01 decides whether `/agents/v1` uses the same envelope. The default is yes, so the CLI parses one shape. agent-app cannot import `gateway-core` (ADR-011), so it keeps its own small table; ARCH-10 already confines its mapper to `.agent.app.error`.
+- COST-02 can store the request ID as a Postgres `uuid` with time-ordered inserts.
+
 <!--
 Template for a new ADR (copy above this comment):
 

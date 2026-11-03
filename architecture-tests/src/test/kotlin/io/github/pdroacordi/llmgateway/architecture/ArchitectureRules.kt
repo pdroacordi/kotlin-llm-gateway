@@ -61,6 +61,25 @@ val WIRING_ANNOTATIONS: List<String> =
         "org.springframework.boot.context.properties.ConfigurationProperties",
     )
 
+// ADR-015, ADR-FND-04-005: one mapper per app module. A class name also matches its nested types; the Boot
+// autoconfigure entry is a whole package.
+val ERROR_HANDLING_TYPES: List<String> =
+    listOf(
+        "org.springframework.web.server.WebExceptionHandler",
+        "org.springframework.web.server.CoWebExceptionHandler",
+        "org.springframework.web.server.handler.ExceptionHandlingWebHandler",
+        "org.springframework.web.server.handler.ResponseStatusExceptionHandler",
+        "org.springframework.web.reactive.handler.WebFluxResponseStatusExceptionHandler",
+        "org.springframework.web.reactive.DispatchExceptionHandler",
+        "org.springframework.web.reactive.result.method.annotation.ResponseEntityExceptionHandler",
+        "org.springframework.boot.webflux.error.ErrorWebExceptionHandler",
+        "org.springframework.boot.webflux.autoconfigure.ProblemDetailsExceptionHandler",
+        "org.springframework.boot.webflux.autoconfigure.error",
+        "org.springframework.web.bind.annotation.ControllerAdvice",
+        "org.springframework.web.bind.annotation.RestControllerAdvice",
+        "org.springframework.web.bind.annotation.ExceptionHandler",
+    )
+
 private const val FIXTURES_SOURCE_SET = "fixtures"
 private val NOT_MODULES = setOf("build-logic")
 
@@ -192,6 +211,20 @@ fun importsStayWithinAllowedModules(
         }
     }
 
+/**
+ * ARCH-10: error handling lives only in `<app root>.error`, so a `@ControllerAdvice` cannot silently take over
+ * controller and handler-mapping errors. Annotations are resolved as in ARCH-6. Names are matched, not types: a
+ * typealias or subclass declared inside `.error` and used elsewhere is not seen, so ErrorEnvelopeIntegrationTest
+ * also asserts the exact set of WebExceptionHandler beans and that no advice bean exists.
+ */
+fun errorHandlingOnlyInErrorPackage(
+    files: List<ModuleFile>,
+    modules: List<Module> = Modules.all,
+): List<String> =
+    files
+        .filterNot { it.isInAppErrorPackage(modules) }
+        .flatMap { errorHandlingIn(it) }
+
 /** Every Kotlin file of the repository except fixtures, `build-logic/` and generated code under `build/`. */
 object ProductionScope {
     val files: List<ModuleFile> by lazy {
@@ -212,16 +245,18 @@ fun assertNoViolations(violations: List<String>) {
 }
 
 /** Dotted names written in code, outside import and package lines, comments and string literals. */
-fun inlineQualifiedNames(text: String): Set<String> {
-    val code =
-        text
-            .replace(RAW_STRING, "\"\"")
-            .replace(BLOCK_COMMENT, " ")
-            .replace(STRING, "\"\"")
-            .replace(LINE_COMMENT, "")
-            .replace(IMPORT_OR_PACKAGE_LINE, "")
-    return QUALIFIED_NAME.findAll(code).map { it.value }.toSet()
-}
+fun inlineQualifiedNames(text: String): Set<String> = QUALIFIED_NAME.findAll(codeOnly(text)).map { it.value }.toSet()
+
+/** Undotted capitalized names written in code, the candidates a star import can resolve. */
+fun simpleTypeNames(text: String): Set<String> = SIMPLE_TYPE_NAME.findAll(codeOnly(text)).map { it.value }.toSet()
+
+private fun codeOnly(text: String): String =
+    text
+        .replace(RAW_STRING, "\"\"")
+        .replace(BLOCK_COMMENT, " ")
+        .replace(STRING, "\"\"")
+        .replace(LINE_COMMENT, "")
+        .replace(IMPORT_OR_PACKAGE_LINE, "")
 
 private val RAW_STRING = Regex("\"\"\"[\\s\\S]*?\"\"\"")
 private val BLOCK_COMMENT = Regex("""/\*[\s\S]*?\*/""")
@@ -229,6 +264,7 @@ private val STRING = Regex(""""(?:\\.|[^"\\\n])*"""")
 private val LINE_COMMENT = Regex("//.*")
 private val IMPORT_OR_PACKAGE_LINE = Regex("""^\s*(import|package)\s.*$""", RegexOption.MULTILINE)
 private val QUALIFIED_NAME = Regex("""(?<![\w.])[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+""")
+private val SIMPLE_TYPE_NAME = Regex("""(?<![\w.])[A-Z]\w*""")
 
 private fun inAnyOf(prefixes: List<String>): (String) -> Boolean = { name -> prefixes.any { name.isInPackage(it) } }
 
@@ -317,3 +353,48 @@ private fun resolve(
         '.' in name -> listOf(name)
         else -> explicitImports.filter { it.substringAfterLast('.') == name } + starImports.map { "$it.$name" }
     }
+
+private fun isErrorHandling(name: String): Boolean = ERROR_HANDLING_TYPES.any { name.isInPackage(it) }
+
+private fun ModuleFile.isInAppErrorPackage(modules: List<Module>): Boolean {
+    val module = modules.named(module)
+    val pkg = file.packagee?.name
+    return module?.role == Role.APP && pkg != null && pkg.isInPackage("${module.rootPackage}.error")
+}
+
+private fun errorHandlingIn(file: ModuleFile): List<String> {
+    val prefix = "ARCH-10 (ADR-015, ADR-FND-04-005): ${file.path} in ${file.module}"
+    val starImports =
+        file.file.imports
+            .filter { it.isWildcard }
+            .map { it.name }
+
+    val imports =
+        file.file.imports
+            .map { it.name }
+            .filter(::isErrorHandling)
+            .map { "$prefix imports $it" }
+    val inline =
+        inlineQualifiedNames(file.file.text)
+            .filter(::isErrorHandling)
+            .sorted()
+            .map { "$prefix references $it" }
+    val annotationNames =
+        file.file
+            .declarations(includeNested = true, includeLocal = true)
+            .filterIsInstance<KoAnnotationProvider>()
+            .flatMap { it.annotations }
+            .flatMap { candidateNames(it, starImports) }
+            .filter(::isErrorHandling)
+            .distinct()
+    val annotations = annotationNames.map { "$prefix is annotated with @$it" }
+    // Supertypes and other uses of a star-imported name, such as `class X : WebExceptionHandler`.
+    val starUses =
+        simpleTypeNames(file.file.text)
+            .flatMap { name -> starImports.map { "$it.$name" } }
+            .filter { isErrorHandling(it) && it !in annotationNames }
+            .distinct()
+            .sorted()
+            .map { "$prefix uses $it through a star import" }
+    return imports + inline + annotations + starUses
+}

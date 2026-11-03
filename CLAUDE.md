@@ -34,7 +34,7 @@ agent-app   ──▶ agent-core                           (calls the gateway ov
 cli                                                  (HTTP client of both apps, imports neither; ADR-012)
 ```
 
-The graph above is the target. Built today: `gateway-core` (no sources until FND-04), `gateway-app`, `architecture-tests`. [ADR-014](docs/DECISIONS.md#adr-014) says which item creates each other module and its root package. Adding a module: `include` it in `settings.gradle.kts`, apply exactly one convention plugin from `build-logic/`, add a `kover(project(...))` line to the root `build.gradle.kts` if it has production code, and put every file under its root package from the ADR-014 table.
+The graph above is the target. Built today: `gateway-core` (request IDs and the error model, FND-04), `gateway-app`, `architecture-tests`. [ADR-014](docs/DECISIONS.md#adr-014) says which item creates each other module and its root package. Adding a module: `include` it in `settings.gradle.kts`, apply exactly one convention plugin from `build-logic/`, add a `kover(project(...))` line to the root `build.gradle.kts` if it has production code, and put every file under its root package from the ADR-014 table.
 
 - **Core modules are plain Kotlin.** No Spring, Reactor, Netty, JDBC/R2DBC or HTTP-client imports in `*-core`. They hold domain types, ports (interfaces) and pure policies (routing, limits, cost, cache keys). Konsist tests enforce it.
 - **One port per capability** (`ChatModelPort`, `RateLimiterPort`, `ResponseCachePort`, `GuardrailPort`, `UsageSink`, ...). Only the adapter sees a provider's or library's types.
@@ -47,7 +47,7 @@ The graph above is the target. Built today: `gateway-core` (no sources until FND
 
 - Kotlin official style (ktlint), 4-space indent, 120 columns. Identifiers in English.
 - Domain types are immutable `data class`es; IDs and quantities are `value class`es (`TeamId`, `TokenCount`).
-- Expected failures are sealed result types in core (`RateLimited`, `GuardrailBlocked`, `ProviderUnavailable`). Exceptions are for bugs and adapter boundaries. The app maps both to the OpenAI error envelope in one place.
+- Expected failures are sealed result types in core (`RateLimited`, `GuardrailBlocked`, `ProviderUnavailable`). Exceptions are for bugs and adapter boundaries. The app maps both to the OpenAI error envelope in one place. At the HTTP edge a handler or filter raises a `GatewayError` as `GatewayErrorException`; only `<app root>.error` maps exceptions to the envelope (ARCH-10, ADR-015).
 - No `!!`. No `lateinit` outside tests. No `GlobalScope`. Never swallow `CancellationException`.
 - Money and prices are never `Double` or `Float`.
 - Time comes from an injected `Clock`/`TimeSource`; core never calls `Instant.now()` or `System.currentTimeMillis()`.
@@ -71,6 +71,7 @@ Read the entry before touching the system. The rule beside each is the one a cha
 
 | System | Entry | Never break |
 |---|---|---|
+| Request context and errors | [request-context-and-errors](docs/knowledge/systems/request-context-and-errors.md) | Every response WebFlux handles carries a gateway-generated `x-request-id`; every error body is the OpenAI envelope written only by `gateway.app.error`; a 5xx body never carries an exception message. |
 | Auth and teams | (GW-04) | Every request resolves to exactly one team before any other stage. API keys are stored as HMAC hashes and shown once. |
 | Provider adapters | (GW-01) | Provider types never cross the port. A stream is translated chunk by chunk, never buffered whole. Usage comes from the provider; an estimate is used only when the provider omits it, and is flagged `estimated`. |
 | Routing | (RTE-01) | Routing is a pure function of (request, route table, provider health, budget state). Fallback happens only before the first byte is sent. |
@@ -92,7 +93,7 @@ Read the entry before touching the system. The rule beside each is the one a cha
 
 ```bash
 ./gradlew test                                # unit (core, no Spring context) + integration (Testcontainers)
-./gradlew :architecture-tests:test            # Konsist architecture rules ARCH-1 to ARCH-9
+./gradlew :architecture-tests:test            # Konsist architecture rules ARCH-1 to ARCH-10
 ./gradlew koverVerify                         # coverage thresholds
 ./gradlew ktlintCheck detektMain detektTest   # style + static analysis (detekt with type resolution)
 ./gradlew ktlintFormat                        # fix style

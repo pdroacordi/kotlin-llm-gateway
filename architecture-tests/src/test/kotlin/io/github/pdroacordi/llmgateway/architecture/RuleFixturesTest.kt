@@ -106,6 +106,56 @@ class RuleFixturesTest {
     }
 
     @Test
+    fun `ARCH-10 fails on error handling outside an app's error package`() {
+        val violations = errorHandlingOnlyInErrorPackage(fixture(ARCH_10))
+        val annotation = "org.springframework.web.bind.annotation"
+        assertFlags(violations, "ARCH-10", "ChatErrorAdvice.kt", "imports $annotation.RestControllerAdvice")
+        assertFlags(violations, "ARCH-10", "ChatErrorAdvice.kt", "annotated with @$annotation.ExceptionHandler")
+        assertFlags(violations, "ARCH-10", "StarImportedAdvice.kt", "annotated with @$annotation.ControllerAdvice")
+        assertFlags(
+            violations,
+            "ARCH-10",
+            "LocalExceptionHandler.kt",
+            "uses org.springframework.web.server.WebExceptionHandler through a star import",
+        )
+        assertFlags(
+            violations,
+            "ARCH-10",
+            "LocalExceptionHandler.kt",
+            "references org.springframework.boot.webflux.error.ErrorWebExceptionHandler",
+        )
+    }
+
+    @Test
+    fun `ARCH-10 fails on the coroutine handler, Boot's problem-details advice and the exception-handling decorator`() {
+        val violations = errorHandlingOnlyInErrorPackage(fixture(ARCH_10))
+        assertFlags(
+            violations,
+            "ARCH-10",
+            "CoroutineErrorHandler.kt",
+            "imports org.springframework.web.server.CoWebExceptionHandler",
+        )
+        assertFlags(
+            violations,
+            "ARCH-10",
+            "ProblemDetailsWiring.kt",
+            "imports org.springframework.boot.webflux.autoconfigure.ProblemDetailsExceptionHandler",
+        )
+        assertFlags(
+            violations,
+            "ARCH-10",
+            "WrappedWebHandler.kt",
+            "references org.springframework.web.server.handler.ExceptionHandlingWebHandler",
+        )
+    }
+
+    @Test
+    fun `ARCH-10 allows error handling in the app's error package`() {
+        val violations = errorHandlingOnlyInErrorPackage(fixture(ARCH_10))
+        assertTrue(violations.none { "AllowedHandler.kt" in it }) { violations.toString() }
+    }
+
+    @Test
     fun `a package prefix matches itself`() {
         assertTrue("org.springframework".isInPackage("org.springframework"))
     }
@@ -150,5 +200,6 @@ class RuleFixturesTest {
     private companion object {
         // Relative to the test task's working directory, the architecture-tests project directory.
         const val FIXTURES_DIR = "src/fixtures/kotlin"
+        const val ARCH_10 = "arch-10-error-handling-outside-error-package"
     }
 }

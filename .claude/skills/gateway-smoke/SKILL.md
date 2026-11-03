@@ -22,6 +22,7 @@ Tests prove the code is correct in isolation; a smoke run proves the deployed pi
 3. **Seed:** create the teams, keys, routes, prices and policies the scenarios need through the admin API (never by SQL, so the API itself is exercised). Scenario scripts live in `tools/smoke/`.
 4. **Scenarios:** run the ones the item touches, plus the baseline (auth, one completion, one stream):
    - Auth: missing or bad key gives 401 with the OpenAI error envelope.
+   - Errors: an unknown route gives 404 with the OpenAI envelope and `x-request-id`; `x-client-request-id` is echoed.
    - Completion: 200, body matches the OpenAI schema, `usage` present, response headers carry request ID and cost.
    - Stream: `curl -N` shows `data:` chunks then `data: [DONE]`; first byte before the mock's full latency (no buffering).
    - Rate limit: a burst over the team limit gives 429 with `retry-after` and the limit headers; the other team is unaffected.

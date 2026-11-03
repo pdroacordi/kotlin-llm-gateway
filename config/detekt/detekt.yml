@@ -5,6 +5,9 @@ style:
   MaxLineLength:
     # Must match ktlint's max_line_length in .editorconfig.
     maxLineLength: 120
+  ForbiddenVoid:
+    # WebFlux contracts return Mono<Void> (WebExceptionHandler, BodyInserter); Unit cannot stand in there.
+    ignoreUsageInGenerics: true
 
 # CLAUDE.md: no GlobalScope, never swallow CancellationException. Listed explicitly so an alpha
 # that changes a default cannot switch them off.

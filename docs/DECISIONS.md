@@ -95,6 +95,7 @@ Adoption cost decides whether teams route through a gateway. Most SDKs and tools
 - Adapters translate other providers (Anthropic first, GW-03) to and from the OpenAI shape, including streams and tool calls.
 - Unknown request fields are tolerated and passed on where the provider supports them.
 - Features with no OpenAI equivalent (cache bypass, cost, request ID) travel in headers.
+- 2026-11-03: v1 providers are OpenAI and Anthropic only (user: "Keep the two"). Another provider (Gemini, Bedrock, ...) or another inbound format (Anthropic Messages API) is new scope and needs the user's go-ahead; GW-07 (local models) stays `[?]`.
 
 ---
 

@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.flow
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
@@ -47,6 +48,16 @@ class ChatStreamClosingChannelTest(
             }
     }
 
+    private var mark = 0
+
+    // Skips the class-level capture: docs/knowledge/gotchas/output-capture-all-includes-the-class-level-capture.md
+    @BeforeEach
+    fun markLog(output: CapturedOutput) {
+        mark = output.length
+    }
+
+    private fun ownLog(output: CapturedOutput): String = output.all.substring(mark)
+
     @Test
     fun `a first frame on a closing channel still ends the flow, with one Stream cancelled line`(
         output: CapturedOutput,
@@ -67,8 +78,8 @@ class ChatStreamClosingChannelTest(
             await().atMost(WAIT).until { provider.calls.isNotEmpty() }
         }
 
-        await().atMost(WAIT).until { "Stream cancelled" in output.all }
-        val line = output.all.lines().single { "Stream cancelled" in it }
+        await().atMost(WAIT).until { "Stream cancelled" in ownLog(output) }
+        val line = ownLog(output).lines().single { "Stream cancelled" in it }
         assertTrue("outcome=cancelled" in line) { line }
         assertEquals(1, provider.calls.size)
     }

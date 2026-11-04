@@ -9,6 +9,7 @@ import kotlinx.coroutines.reactor.awaitSingle
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
@@ -75,6 +76,16 @@ class BlockHoundIntegrationTest(
         fun threadRecordingClock(): ThreadRecordingClock = ThreadRecordingClock(Clock.systemUTC())
     }
 
+    private var mark = 0
+
+    // Skips the class-level capture: docs/knowledge/gotchas/output-capture-all-includes-the-class-level-capture.md
+    @BeforeEach
+    fun markLog(output: CapturedOutput) {
+        mark = output.length
+    }
+
+    private fun ownLog(output: CapturedOutput): String = output.all.substring(mark)
+
     @Test
     fun `BlockHound is installed - a blocking call on a non-blocking thread fails`() {
         val error =
@@ -99,7 +110,7 @@ class BlockHoundIntegrationTest(
         // write, so the client can have the response first.
         await()
             .atMost(Duration.ofSeconds(5))
-            .until { "BlockingOperationError: Blocking call! java.lang.Thread.sleep" in output.all }
+            .until { "BlockingOperationError: Blocking call! java.lang.Thread.sleep" in ownLog(output) }
     }
 
     @Test
@@ -179,8 +190,8 @@ class BlockHoundIntegrationTest(
         assertEquals(CANCELLED, firsts.size)
         await()
             .atMost(Duration.ofSeconds(10))
-            .until { output.all.lines().count { "Stream cancelled" in it } == CANCELLED }
-        assertTrue("BlockingOperationError" !in output.all) { output.all }
+            .until { ownLog(output).lines().count { "Stream cancelled" in it } == CANCELLED }
+        assertTrue("BlockingOperationError" !in ownLog(output)) { output.all }
     }
 
     private fun stream(): Flux<String> =

@@ -94,8 +94,8 @@ class RequestContextIntegrationTest(
         assertEquals(200, result.status.value())
         JsonPathExpectationsHelper("$.fromCoroutine").assertValue(body, requestId)
         JsonPathExpectationsHelper("$.fromMdc").assertValue(body, requestId)
-        val line = output.all.lines().single { ProbeController.CONTEXT_LOG_LINE in it }
-        assertTrue("[$requestId]" in line) { line }
+        val lines = output.all.lines().filter { ProbeController.CONTEXT_LOG_LINE in it && "[$requestId]" in it }
+        assertEquals(1, lines.size) { output.all }
     }
 
     private fun assertInvalidClientRequestId(result: EntityExchangeResult<ByteArray>) {

@@ -4,6 +4,7 @@ import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.boot.test.context.SpringBootTest
@@ -58,12 +59,22 @@ class MockCommittedResponseIntegrationTest(
             }
     }
 
+    private var mark = 0
+
+    // Skips the class-level capture: docs/knowledge/gotchas/output-capture-all-includes-the-class-level-capture.md
+    @BeforeEach
+    fun markLog(output: CapturedOutput) {
+        mark = output.length
+    }
+
+    private fun ownLog(output: CapturedOutput): String = output.all.substring(mark)
+
     @Test
     fun `a bug after commit aborts the body and leaves no query in the log`(output: CapturedOutput) {
         val raw = rawGet("/v1/test-committed?$QUERY")
 
         assertAborted(raw)
-        await().atMost(WAIT).until { NETTY_LINE in output.all }
+        await().atMost(WAIT).until { NETTY_LINE in ownLog(output) }
         assertFalse(QUERY in output.all) { output.all }
         assertEquals(1, mapperErrorLines(output).size) { output.all }
     }
@@ -75,13 +86,13 @@ class MockCommittedResponseIntegrationTest(
         val raw = rawGet("/v1/test-committed-disconnect-phrase?$QUERY")
 
         assertAborted(raw)
-        await().atMost(WAIT).until { NETTY_LINE in output.all }
+        await().atMost(WAIT).until { NETTY_LINE in ownLog(output) }
         assertFalse(QUERY in output.all) { output.all }
         assertEquals(1, mapperErrorLines(output).size) { output.all }
     }
 
     private fun mapperErrorLines(output: CapturedOutput): List<String> =
-        output.all.lines().filter { " ERROR " in it && "MockErrorWebExceptionHandler" in it }
+        ownLog(output).lines().filter { " ERROR " in it && "MockErrorWebExceptionHandler" in it }
 
     // A complete chunked body ends with the zero-length chunk; `Connection: close` makes the read end either way.
     private fun assertAborted(raw: String) {

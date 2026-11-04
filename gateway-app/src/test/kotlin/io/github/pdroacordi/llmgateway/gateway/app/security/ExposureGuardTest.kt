@@ -3,6 +3,7 @@ package io.github.pdroacordi.llmgateway.gateway.app.security
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
@@ -13,6 +14,16 @@ import org.springframework.boot.test.system.OutputCaptureExtension
 
 @ExtendWith(OutputCaptureExtension::class)
 class ExposureGuardTest {
+    private var mark = 0
+
+    // Skips the class-level capture: docs/knowledge/gotchas/output-capture-all-includes-the-class-level-capture.md
+    @BeforeEach
+    fun markLog(output: CapturedOutput) {
+        mark = output.length
+    }
+
+    private fun ownLog(output: CapturedOutput): String = output.all.substring(mark)
+
     @ParameterizedTest
     @ValueSource(strings = ["127.0.0.1", "127.1.2.3", "::1", "[::1]", "0:0:0:0:0:0:0:1", "localhost", "LOCALHOST"])
     fun `a loopback address passes without the flag`(address: String) {
@@ -38,7 +49,7 @@ class ExposureGuardTest {
     fun `with the flag a non-loopback bind starts with one warning`(output: CapturedOutput) {
         ExposureGuard.check("0.0.0.0", allowExposure = true)
 
-        assertTrue(output.all.lines().count { "allow-unauthenticated-exposure" in it } == 1) { output.all }
+        assertTrue(ownLog(output).lines().count { "allow-unauthenticated-exposure" in it } == 1) { output.all }
     }
 
     @Test
@@ -47,6 +58,6 @@ class ExposureGuardTest {
     ) {
         ExposureGuard.check("127.0.0.1", allowExposure = true)
 
-        assertTrue("allow-unauthenticated-exposure" in output.all) { output.all }
+        assertTrue("allow-unauthenticated-exposure" in ownLog(output)) { output.all }
     }
 }

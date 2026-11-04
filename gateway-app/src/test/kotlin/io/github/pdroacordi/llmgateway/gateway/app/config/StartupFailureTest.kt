@@ -3,6 +3,7 @@ package io.github.pdroacordi.llmgateway.gateway.app.config
 import io.github.pdroacordi.llmgateway.gateway.app.GatewayApplication
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
@@ -12,6 +13,14 @@ import org.springframework.boot.test.system.OutputCaptureExtension
 
 @ExtendWith(OutputCaptureExtension::class)
 class StartupFailureTest {
+    private var mark = 0
+
+    // Skips the class-level capture: docs/knowledge/gotchas/output-capture-all-includes-the-class-level-capture.md
+    @BeforeEach
+    fun markLog(output: CapturedOutput) {
+        mark = output.length
+    }
+
     private fun start(vararg args: String): Throwable =
         assertThrows<Throwable> {
             SpringApplicationBuilder(GatewayApplication::class.java).run("--server.port=0", *args).close()
@@ -68,7 +77,7 @@ class StartupFailureTest {
         val failure = start("--server.address=0.0.0.0")
 
         assertTrue("llmgw.security.allow-unauthenticated-exposure" in failure.chain()) { failure.chain() }
-        assertFalse("Netty started" in output.all) { output.all }
+        assertFalse("Netty started" in output.all.substring(mark)) { output.all }
     }
 
     private companion object {

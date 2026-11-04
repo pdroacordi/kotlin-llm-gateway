@@ -7,6 +7,7 @@ import io.github.pdroacordi.llmgateway.gateway.core.request.RequestIdGenerator
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
@@ -31,6 +32,13 @@ import kotlin.random.Random
 @ExtendWith(OutputCaptureExtension::class)
 class GatewayErrorWebExceptionHandlerTest {
     private val ids = RequestIdGenerator(Clock.fixed(Instant.ofEpochMilli(MILLIS), ZoneOffset.UTC), Random(1))
+    private var mark = 0
+
+    // Skips the class-level capture: docs/knowledge/gotchas/output-capture-all-includes-the-class-level-capture.md
+    @BeforeEach
+    fun markLog(output: CapturedOutput) {
+        mark = output.length
+    }
 
     @Test
     fun `without the filter's attribute the handler generates a request ID itself`() {
@@ -174,7 +182,10 @@ class GatewayErrorWebExceptionHandlerTest {
 
     // Log lines start at column 0; stack frames are indented.
     private fun errorLines(output: CapturedOutput): List<String> =
-        output.all.lines().filter { it.trimStart() == it && " ERROR " in it }
+        output.all
+            .substring(mark)
+            .lines()
+            .filter { it.trimStart() == it && " ERROR " in it }
 
     private fun disconnectPhrase() = IllegalStateException("adapter", IOException("Connection reset by peer"))
 

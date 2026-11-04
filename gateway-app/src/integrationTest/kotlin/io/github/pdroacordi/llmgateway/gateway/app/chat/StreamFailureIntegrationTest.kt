@@ -4,6 +4,7 @@ import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.params.ParameterizedTest
@@ -21,6 +22,7 @@ private fun assertOneErrorFrame(
     stream: RawStream,
     code: String,
     output: CapturedOutput,
+    mark: Int,
 ) {
     assertEquals(200, stream.status)
     assertTrue(stream.cleanEnd) { stream.body }
@@ -31,16 +33,25 @@ private fun assertOneErrorFrame(
     assertEquals(setOf("message", "type", "param", "code"), error.get("error").propertyNames().toSet())
     assertEquals(code, error.at("/error/code").stringValue())
     assertTrue(stream.requestId in error.at("/error/message").stringValue())
-    await().atMost(Duration.ofSeconds(2)).until { "Stream failed" in output.all }
-    val errors = output.all.lines().filter { " ERROR " in it }
+    await().atMost(Duration.ofSeconds(2)).until { "Stream failed" in output.all.substring(mark) }
+    val log = output.all.substring(mark)
+    val errors = log.lines().filter { " ERROR " in it }
     val line = errors.single { stream.requestId in it }
     assertTrue("Stream failed" in line) { line }
-    assertFalse("Error finishing response" in output.all) { output.all }
+    assertFalse("Error finishing response" in log) { output.all }
     assertFalse(errors.any { "GatewayErrorWebExceptionHandler" in it }) { output.all }
 }
 
 @ExtendWith(OutputCaptureExtension::class)
 class StreamFailureIntegrationTest : MockBackedTest() {
+    private var mark = 0
+
+    // Skips the class-level capture: docs/knowledge/gotchas/output-capture-all-includes-the-class-level-capture.md
+    @BeforeEach
+    fun markLog(output: CapturedOutput) {
+        mark = output.length
+    }
+
     @ParameterizedTest
     @CsvSource(
         delimiter = '|',
@@ -57,7 +68,7 @@ class StreamFailureIntegrationTest : MockBackedTest() {
     ) {
         scenario("""{"otherwise":$behaviour}""")
 
-        assertOneErrorFrame(this, rawStream(), code, output)
+        assertOneErrorFrame(this, rawStream(), code, output, mark)
     }
 }
 
@@ -70,11 +81,19 @@ class StreamFailureIntegrationTest : MockBackedTest() {
 )
 @ExtendWith(OutputCaptureExtension::class)
 class StreamStallDeadlineTest : MockBackedTest() {
+    private var mark = 0
+
+    // Skips the class-level capture: docs/knowledge/gotchas/output-capture-all-includes-the-class-level-capture.md
+    @BeforeEach
+    fun markLog(output: CapturedOutput) {
+        mark = output.length
+    }
+
     @Test
     fun `stall at idle-timeout ends in one upstream_timeout frame`(output: CapturedOutput) {
         scenario("""{"otherwise":{"fault":{"kind":"stall","afterPieces":2}}}""")
 
-        assertOneErrorFrame(this, rawStream(), "upstream_timeout", output)
+        assertOneErrorFrame(this, rawStream(), "upstream_timeout", output, mark)
     }
 }
 

@@ -45,11 +45,20 @@ class ChatStreamRouteTest(
 ) {
     private val http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()
     private val mapper = JsonMapper.builder().build()
+    private var mark = 0
 
     @BeforeEach
     fun resetProvider() {
         provider.reset()
     }
+
+    // Skips the class-level capture: docs/knowledge/gotchas/output-capture-all-includes-the-class-level-capture.md
+    @BeforeEach
+    fun markLog(output: CapturedOutput) {
+        mark = output.length
+    }
+
+    private fun ownLog(output: CapturedOutput): String = output.all.substring(mark)
 
     private fun post(
         body: String = STREAM,
@@ -237,10 +246,10 @@ class ChatStreamRouteTest(
         assertTrue(""""code":"internal_error"""" in raw) { raw }
         assertFalse("[DONE]" in raw) { raw }
         assertTrue(raw.endsWith("0\r\n\r\n")) { raw }
-        await().atMost(WAIT).until { "Stream crashed after commit" in output.all }
-        assertTrue("a bug in the flow" in output.all) { output.all }
+        await().atMost(WAIT).until { "Stream crashed after commit" in ownLog(output) }
+        assertTrue("a bug in the flow" in ownLog(output)) { output.all }
         assertFalse(QUERY in output.all) { output.all }
-        assertFalse("Error finishing response" in output.all) { output.all }
+        assertFalse("Error finishing response" in ownLog(output)) { output.all }
         val requestId = requestIdOf(raw)
         assertEquals(1, output.all.lines().count { " ERROR " in it && requestId in it }) { output.all }
     }
@@ -258,7 +267,7 @@ class ChatStreamRouteTest(
 
         assertTrue(""""code":"upstream_error"""" in raw) { raw }
         assertTrue(raw.endsWith("0\r\n\r\n")) { raw }
-        await().atMost(WAIT).until { "Stream failed" in output.all }
+        await().atMost(WAIT).until { "Stream failed" in ownLog(output) }
         val requestId = requestIdOf(raw)
         val line = output.all.lines().single { " ERROR " in it && requestId in it }
         assertTrue("Stream failed" in line && requestId in line && "code=upstream_error" in line) { line }

@@ -57,11 +57,20 @@ class StalledClientStreamTest(
     }
 
     private val cancelled = AtomicBoolean()
+    private var mark = 0
 
     @BeforeEach
     fun reset() {
         provider.reset()
     }
+
+    // Skips the class-level capture: docs/knowledge/gotchas/output-capture-all-includes-the-class-level-capture.md
+    @BeforeEach
+    fun markLog(output: CapturedOutput) {
+        mark = output.length
+    }
+
+    private fun ownLog(output: CapturedOutput): String = output.all.substring(mark)
 
     private fun endless(): Flow<ProviderStreamEvent> =
         flow<ProviderStreamEvent> {
@@ -75,11 +84,11 @@ class StalledClientStreamTest(
         }
 
     private fun assertCancelled(output: CapturedOutput) {
-        await().atMost(WAIT).until { cancelled.get() && "Stream cancelled" in output.all }
-        val lines = output.all.lines().filter { "Stream cancelled" in it }
+        await().atMost(WAIT).until { cancelled.get() && "Stream cancelled" in ownLog(output) }
+        val lines = ownLog(output).lines().filter { "Stream cancelled" in it }
         assertEquals(1, lines.size) { output.all }
         assertTrue("outcome=cancelled" in lines.single()) { lines.single() }
-        assertFalse(" ERROR " in output.all) { output.all }
+        assertFalse(" ERROR " in ownLog(output)) { output.all }
     }
 
     // Reads what the kernel held, then EOF or a reset. A socket that stays open ends in SocketTimeoutException.
@@ -139,7 +148,7 @@ class StalledClientStreamTest(
 
         assertTrue(body.endsWith("0\r\n\r\n")) { body.takeLast(FRAME_TAIL) }
         assertEquals(FRAMES, Regex("\"id\":").findAll(body).count())
-        assertFalse("Stream cancelled" in output.all) { output.all }
+        assertFalse("Stream cancelled" in ownLog(output)) { output.all }
     }
 
     // 32 KB/s. Only where SO_SNDBUF bounds what a write hands the kernel: Windows takes hundreds of KB at once, so

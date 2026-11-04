@@ -122,7 +122,9 @@ class ErrorEnvelopeIntegrationTest(
         assertTrue(requestId in message(result)) { message(result) }
         assertFalse(ProbeController.SECRET in result.bodyText()) { result.bodyText() }
         // A 5xx is logged after its write, so the client can have the response first.
-        await().atMost(Duration.ofSeconds(5)).until { "[$requestId]" in output.all && " ERROR " in output.all }
+        await()
+            .atMost(Duration.ofSeconds(5))
+            .until { output.all.lines().any { " ERROR " in it && "[$requestId]" in it } }
         val errorLines = output.all.lines().filter { " ERROR " in it && "[$requestId]" in it }
         assertEquals(1, errorLines.size) { output.all }
         val stackTrace =
@@ -166,9 +168,8 @@ class ErrorEnvelopeIntegrationTest(
 
         val requestId = checkNotNull(response.headers.getFirst(GatewayHeaders.REQUEST_ID))
         // Log lines start at column 0; stack frames, which can quote this test's name, are indented.
-        val errorLines = output.all.lines().filter { it.trimStart() == it && " ERROR " in it }
+        val errorLines = output.all.lines().filter { it.trimStart() == it && " ERROR " in it && "[$requestId]" in it }
         assertEquals(1, errorLines.size) { output.all }
-        assertTrue("[$requestId]" in errorLines.single()) { errorLines.single() }
         assertFalse(QUERY in output.all) { output.all }
     }
 

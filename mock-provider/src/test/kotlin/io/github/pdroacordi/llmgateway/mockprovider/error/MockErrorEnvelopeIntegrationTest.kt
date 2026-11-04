@@ -40,6 +40,8 @@ class MockErrorEnvelopeIntegrationTest(
     @Autowired private val client: WebTestClient,
     @Autowired private val context: ApplicationContext,
 ) {
+    private var mark = 0
+
     /** A test-only route that fails like a bug in the mock would. */
     @TestConfiguration(proxyBeanMethods = false)
     class FailingRoute {
@@ -49,6 +51,14 @@ class MockErrorEnvelopeIntegrationTest(
 
     @BeforeEach
     fun resetMock() = client.reset()
+
+    // Skips the class-level capture: docs/knowledge/gotchas/output-capture-all-includes-the-class-level-capture.md
+    @BeforeEach
+    fun markLog(output: CapturedOutput) {
+        mark = output.length
+    }
+
+    private fun ownLog(output: CapturedOutput): String = output.all.substring(mark)
 
     @Test
     fun `the context holds exactly one ErrorWebExceptionHandler, the mock's, and no advice`() {
@@ -151,9 +161,9 @@ class MockErrorEnvelopeIntegrationTest(
             result.bodyText(),
         )
         assertFalse(BUG_MESSAGE in result.bodyText())
-        assertTrue(BUG_MESSAGE in output.all) { "the stack trace is logged" }
+        assertTrue(BUG_MESSAGE in ownLog(output)) { "the stack trace is logged" }
         assertFalse(QUERY in output.all) { output.all }
-        assertEquals(1, output.all.lines().count { it.trimStart() == it && " ERROR " in it }) { output.all }
+        assertEquals(1, ownLog(output).lines().count { it.trimStart() == it && " ERROR " in it }) { output.all }
     }
 
     private fun exchange(

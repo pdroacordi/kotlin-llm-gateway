@@ -85,9 +85,10 @@ class StreamDisconnectIntegrationTest : MockBackedTest() {
         }
 
         eventually { journal().singleOrNull()?.at("/outcome/kind")?.stringValue() == "client_cancelled" }
-        eventually { "Stream cancelled" in output.all }
-        val line = output.all.lines().single { "Stream cancelled" in it }
-        assertTrue(" INFO " in line && "chunks=0" in line) { line }
+        val requestId = journal().single().at("/headers/x-client-request-id/0").stringValue()
+        eventually { endLines(requestId, output).isNotEmpty() }
+        val line = endLines(requestId, output).single()
+        assertTrue(" INFO " in line && "Stream cancelled" in line && "chunks=0" in line) { line }
     }
 
     @Test

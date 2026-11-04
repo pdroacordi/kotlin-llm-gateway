@@ -22,4 +22,4 @@ source_files:
 
 ## How to handle it
 
-Read an unknown member with `_allProperties()[name]`, as `OpenAiSdkStreamContractTest` does for `x_gateway`. `ChatChunkWriter.EXTENSION_MEMBER` keeps the name in one place.
+Read an unknown member with `_allProperties()[name]`, as `OpenAiSdkStreamContractTest` does for `llmgw`. `ChatChunkWriter.EXTENSION_MEMBER` keeps the name in one place.

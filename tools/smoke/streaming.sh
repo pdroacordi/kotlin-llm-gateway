@@ -16,7 +16,7 @@ GATEWAY="${GATEWAY:-http://127.0.0.1:8080}"
 MOCK="${MOCK:-http://127.0.0.1:8090}"
 ROUTE="/v1/chat/completions"
 # The extension member on an estimated usage chunk; ChatChunkWriter.EXTENSION_MEMBER.
-EXTENSION="x_gateway"
+EXTENSION="llmgw"
 TMP="$(mktemp -d)"
 HEADERS="$TMP/headers"
 BODY="$TMP/body"

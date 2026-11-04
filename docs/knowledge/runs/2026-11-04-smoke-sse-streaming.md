@@ -350,3 +350,7 @@ This answers the first run's unattributed drift. The rise comes in the first rou
 - 3.0 and 4.0 KB/s clients ended by this run's 470 s limit, so their frame was not read, only logged as failed.
 - `ByteBuf` leaks: no `PARANOID` run here, and a plateau in NMT does not exclude a slow leak beyond 600 clients.
 - Rates are paced by a Python client with `sleep`, so they are averages, and real clients read in other patterns.
+
+## Revision (2026-11-04, naming)
+
+The extension member shown above as `x_gateway` was renamed `llmgw` after this run (ADR-019).

@@ -103,7 +103,7 @@ All ticked before the row becomes `[x]`. A "deliberate violation" is made in the
 - [x] A client's other `stream_options` member (`include_obfuscation`) reaches the mock unchanged, and upstream `stream` is `true`.
 - [x] Each frame on the wire is exactly `data: <compact JSON>\n\n`, and the last is `data: [DONE]\n\n` (raw socket).
 - [x] The official SDK `openai-java`: `createStreaming` reads every chunk with `responseValidation(true)`; `ChatCompletionAccumulator` rebuilds the mock's text; the usage chunk is read; `stream_error` raises `SseException` (`OpenAiSdkStreamContractTest`).
-- [x] `usage.omit` with `include_usage`: a last chunk with `choices: []`, a `usage` from the estimator and `"x_gateway":{"usage_estimated":true}`; with provider usage, no `x_gateway` member. `usage.omit` without `include_usage`: no usage chunk.
+- [x] `usage.omit` with `include_usage`: a last chunk with `choices: []`, a `usage` from the estimator and `"llmgw":{"usage_estimated":true}`; with provider usage, no `llmgw` member. `usage.omit` without `include_usage`: no usage chunk.
 - [x] `stream_options` rows of section 4, each with the exact envelope and `lastSeq` unchanged. `Accept: application/json` on a stream still gives SSE.
 
 **Commit point and failures**
@@ -259,9 +259,9 @@ No row of the error table changes and none is added. OpenAI documents no in-band
 ### What stays OpenAI-compatible, what is an extension
 
 - **Compatible:** `stream`, `stream_options`, chunk shape, `usage` semantics, `[DONE]`, in-band `error`, statuses before commit.
-- **Extensions:** `x_gateway` on the usage chunk, only when usage is estimated; `x-gateway-deployment`. Unknown members are tolerated by both SDKs (`OpenAiSdkStreamContractTest` proves `openai-java`).
+- **Extensions:** `llmgw` on the usage chunk, only when usage is estimated; `x-gateway-deployment`. Unknown members are tolerated by both SDKs (`OpenAiSdkStreamContractTest` proves `openai-java`).
 - **Narrower than OpenAI, by design:** an in-band `message` is the gateway's fixed text. A client always gets its first bytes only after the first valid chunk.
-- **How a client learns cost later:** no trailer. `usage` arrives in the last chunk, and cost has two later routes: COST-03's query by request ID, which is in the headers, and a further member beside `x_gateway`, which COST-02 decides (ADR-GW-02-005).
+- **How a client learns cost later:** no trailer. `usage` arrives in the last chunk, and cost has two later routes: COST-03's query by request ID, which is in the headers, and a further member beside `llmgw`, which COST-02 decides (ADR-GW-02-005).
 
 ## 5. Design
 
@@ -830,7 +830,7 @@ Already written with this plan: [ADR-019](../DECISIONS.md#adr-019), the two patt
   - `OpenAiFailureClassifierTest`: in-band rows; `OpenAiRequestWriterTest`: `writeStream` keeps client extras, forces `include_usage`, and `write` stays as it was.
 - **App (`test`, no Docker, real Netty, `FakeChatModelPort` with `streamAnswer: (ChatCall) -> Flow<ProviderStreamEvent>`):**
   - `ChatStreamFramesTest`: each event row; the exact bytes of a frame; `Failed` before and after `Started`.
-  - `ChatChunkWriterTest`: `usage` member by `includeUsage`; `x_gateway` only when estimated; presence preserved.
+  - `ChatChunkWriterTest`: `usage` member by `includeUsage`; `llmgw` only when estimated; presence preserved.
   - `StreamErrorFramesTest`: the JSON equals the mapper's envelope for every `ProviderFailure`; one case per row.
   - `SseFramesTest`: exact bytes; a raw line break rejected.
   - `ChatStreamRouteTest`: 200 headers; `Failed` first gives each status with no stream header left; a thrown bug first gives 500; `stream_options` rows; `Accept` ignored.
@@ -848,7 +848,7 @@ Already written with this plan: [ADR-019](../DECISIONS.md#adr-019), the two patt
   1. Headers: `curl -N -D-`: 200, each section 4 header, UUIDv7.
   2. Frames: `data:` chunks, then `data: [DONE]`.
   3. Correlation: exactly one journal entry; `stream_options.include_usage` true upstream.
-  4. Usage: with and without `include_usage`; `usage.omit` gives `x_gateway`.
+  4. Usage: with and without `include_usage`; `usage.omit` gives `llmgw`.
   5. Spread: `perTokenMs: 200`, 5 or more pieces, first and last at least 600 ms apart.
   6. Errors before commit: 400, 401, 429, 500, 503, 504 give their row, `application/json`.
   7. Faults after commit: `disconnect`, `malformed`, `stream_error`: error frame, no `[DONE]`, curl exit 0.
@@ -1113,3 +1113,9 @@ Append-only, newest at the bottom. Every session on this item ends with an entry
 - **Stale in source, not edited here:** the KDoc at `ClientStallHandler.kt:12` says a client reading "at any rate is left alone", against the limits in section 5.
 - **Next:** commit (`Roadmap: GW-02`), with `git update-index --chmod=+x tools/smoke/streaming.sh`.
 - **2026-11-04, CI run 41813666901:** 5 `StalledClientStreamTest` tests read another class's `Stream cancelled` through the class-level capture; the gateway behaved correctly. Counts and absences now read only the test's own output ([gotcha](../knowledge/gotchas/output-capture-all-includes-the-class-level-capture.md)).
+
+### 2026-11-04: extension member renamed
+- **Who:** orchestrator.
+- **Done:** `x_gateway` became `llmgw` (`ChatChunkWriter.EXTENSION_MEMBER`, `EXTENSION` in `streaming.sh`, the contract sections, roadmap, systems entry, ADR-019).
+- **Decisions:** user, 2026-11-04: "llmgw (Recommended)". Earlier mentions in the ADR options and in this Log keep the old name as history.
+- **Next:** none.

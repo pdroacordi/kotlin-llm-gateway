@@ -8,7 +8,7 @@ import tools.jackson.databind.node.ObjectNode
 /** [ChatChunk] to OpenAI's chunk: typed members first, then the provider's others in the order received. */
 object ChatChunkWriter {
     /** The one place this name lives, pending the user's confirmation of it (ADR-GW-02-005). */
-    const val EXTENSION_MEMBER = "x_gateway"
+    const val EXTENSION_MEMBER = "llmgw"
     const val USAGE_ESTIMATED_MEMBER = "usage_estimated"
     private const val OBJECT = "chat.completion.chunk"
 

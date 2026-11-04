@@ -482,6 +482,7 @@ Full options and reasoning in [GW-02](specs/GW-02-sse-streaming.md), ADR-GW-02-0
 - **Chunks:** every chunk is translated to `ChatChunk`, typed plus `extras` (ADR-018). A typed field holds only a value of the expected type, so presence and `null` survive.
 - **Failure after commit:** one `data` event with the ADR-015 envelope, no `[DONE]`, and a clean end of the body. `[DONE]` means success and nothing else.
 - **Usage:** the gateway always requests it upstream and shows it only to a client that asked. When the provider omits it, the estimate is flagged by `"x_gateway":{"usage_estimated":true}` on the usage chunk, since no header can follow commit.
+  - 2026-11-04: the member is named `llmgw`, not `x_gateway` (user: "llmgw (Recommended)"), matching the CLI and unlikely to collide with a future OpenAI field.
 - **End of stream:** `StreamSummary` is reported exactly once, for every outcome, with a `Usage` always present. A terminal event beats a late cancellation.
 
 ### Consequences

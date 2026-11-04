@@ -39,7 +39,7 @@ Smoke R1 ([run](../runs/2026-11-04-smoke-sse-streaming.md), Revision): 16 KB fra
 
 ## How to handle it
 
-- State both limits when describing a slow reader: the connection's (`ClientStallHandler.kt:40`) and the stream's (`OpenAiChatStream.kt:103-106`, `StreamDeadlines.kt:16`).
+- State both limits when describing a slow reader: the connection's (`ClientStallHandler.kt:74`) and the stream's (`OpenAiChatStream.kt:103-106`, `StreamDeadlines.kt:16`).
 - Never read an `upstream_timeout` after commit as proof of a sick provider: RTE-02's breaker must not count it. `StreamStarvedUpstreamTest` pins the behaviour.
 - The fix is GW-08: an idle timer that does not count time the client, not the provider, holds the stream.
 - Every rate above is a Windows loopback number, and socket buffers set both limits, so measure again elsewhere.

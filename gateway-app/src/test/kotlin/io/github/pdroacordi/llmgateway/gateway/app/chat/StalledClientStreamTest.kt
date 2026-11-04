@@ -83,6 +83,14 @@ class StalledClientStreamTest(
             emit(ProviderStreamEvent.Completed)
         }
 
+    private fun trickling(): Flow<ProviderStreamEvent> =
+        flow<ProviderStreamEvent> {
+            while (true) {
+                emit(FakeChatModelPort.chunk(PADDING))
+                Mono.delay(TRICKLE).awaitSingle()
+            }
+        }.onCompletion { cancelled.set(true) }
+
     private fun assertCancelled(output: CapturedOutput) {
         await().atMost(WAIT).until { cancelled.get() && "Stream cancelled" in ownLog(output) }
         val lines = ownLog(output).lines().filter { "Stream cancelled" in it }
@@ -111,6 +119,19 @@ class StalledClientStreamTest(
 
             assertCancelled(output)
             assertTrue(Duration.ofNanos(System.nanoTime() - started) >= TIMEOUT) { "cut before the timeout" }
+            assertClosed(socket.getInputStream())
+        }
+    }
+
+    // Each frame joins the queue after the kernel stopped taking bytes: that is not progress.
+    @Test
+    fun `a stopped client on a slow stream is cut while frames keep arriving`(output: CapturedOutput) {
+        provider.streamAnswer = { trickling() }
+
+        stalledSocket().use { socket ->
+            socket.getOutputStream().write(REQUEST.encodeToByteArray())
+
+            assertCancelled(output)
             assertClosed(socket.getInputStream())
         }
     }
@@ -157,6 +178,28 @@ class StalledClientStreamTest(
     @EnabledOnOs(OS.LINUX)
     fun `a much slower reader is not cut either`(output: CapturedOutput) {
         `a client that reads slowly but steadily is never cut, and gets every frame`(4096, 125, 6000, output)
+    }
+
+    // No write completes for seconds, so only the bytes of the one frame show progress. Linux only, as above.
+    @Test
+    @EnabledOnOs(OS.LINUX)
+    fun `a reader of one large frame in bursts is not cut, though no write completes`(output: CapturedOutput) {
+        provider.streamAnswer =
+            {
+                flow {
+                    emit(FakeChatModelPort.chunk("x".repeat(LARGE_FRAME)))
+                    emit(ProviderStreamEvent.Completed)
+                }
+            }
+
+        val body =
+            stalledSocket().use { socket ->
+                socket.getOutputStream().write(REQUEST.encodeToByteArray())
+                readPaced(socket.getInputStream(), BURST, BURST_PAUSE_MS, BURST_PACE_MS)
+            }
+
+        assertTrue(body.endsWith(LAST_CHUNK)) { body.takeLast(FRAME_TAIL) }
+        assertFalse("Stream cancelled" in ownLog(output)) { output.all }
     }
 
     @Test
@@ -213,7 +256,11 @@ class StalledClientStreamTest(
 
     private fun readBody(input: InputStream) {
         val body = StringBuilder()
-        while (!body.endsWith(LAST_CHUNK)) body.append(input.read().toChar())
+        while (!body.endsWith(LAST_CHUNK)) {
+            val byte = input.read()
+            check(byte >= 0) { "EOF before the last chunk: $body" }
+            body.append(byte.toChar())
+        }
         assertTrue("[DONE]" in body) { body.toString() }
     }
 
@@ -230,6 +277,11 @@ class StalledClientStreamTest(
         const val FRAME_TAIL = 200
         const val FRAMES = 200
         const val SLOW_PROVIDER_TIMEOUTS = 3L
+        const val LARGE_FRAME = 1024 * 1024
+        const val BURST = 48 * 1024
+        const val BURST_PAUSE_MS = 500L
+        const val BURST_PACE_MS = 6000L
+        val TRICKLE: Duration = Duration.ofMillis(200)
         val PADDING = "x".repeat(16 * 1024)
         val TIMEOUT: Duration = Duration.ofSeconds(1)
         val WAIT: Duration = Duration.ofSeconds(10)

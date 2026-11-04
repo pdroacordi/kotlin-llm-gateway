@@ -47,6 +47,7 @@ class LoopbackHostWebFilterTest {
         assertTrue(filter())
     }
 
+    // The filter's own rule: over a socket Reactor Netty refuses several of these first (LoopbackHostSocketTest).
     @ParameterizedTest
     @ValueSource(
         strings = [

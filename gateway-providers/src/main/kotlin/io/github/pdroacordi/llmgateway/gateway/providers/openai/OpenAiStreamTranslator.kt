@@ -15,10 +15,14 @@ internal class OpenAiStreamTranslator(
 
     private val parser = SseEventParser(maxEventBytes)
 
-    // The reads run on the upstream side of the buffer, and a late fail on the collector's.
+    // The reads run on the upstream side of the buffer, and a late fail on the collector's. Written after undelivered:
+    // a fail that sees the stream ended must find its terminal event.
     @Volatile
     private var state = State.OPEN
     private var finishSeen = false
+
+    // Where the current feed takes the stream, once its events are in undelivered.
+    private var feedEnd = State.OPEN
 
     // The feed that ended the stream, until the collector has it: Flux.timeout drops an item that loses to its timer.
     @Volatile
@@ -39,9 +43,9 @@ internal class OpenAiStreamTranslator(
         if (state != State.OPEN) return emptyList()
         val feed = parser.feed(bytes)
         val events = mutableListOf<ProviderStreamEvent>()
-        feed.events.forEach { event -> if (state == State.OPEN) translate(event)?.let { events += it } }
-        if (feed.overflowed && state == State.OPEN) events += failed(ProviderFailure.UpstreamError)
-        if (state != State.OPEN) undelivered = events
+        feed.events.forEach { event -> if (feedEnd == State.OPEN) translate(event)?.let { events += it } }
+        if (feed.overflowed && feedEnd == State.OPEN) events += failedInFeed(ProviderFailure.UpstreamError)
+        if (feedEnd != State.OPEN) end(events, feedEnd)
         return events
     }
 
@@ -52,12 +56,11 @@ internal class OpenAiStreamTranslator(
             }
 
             finishSeen -> {
-                state = State.ENDED
-                pending(ProviderStreamEvent.Completed)
+                end(listOf(ProviderStreamEvent.Completed))
             }
 
             else -> {
-                pending(failed(ProviderFailure.UpstreamError))
+                end(listOf(ProviderStreamEvent.Failed(ProviderFailure.UpstreamError)))
             }
         }
 
@@ -69,12 +72,19 @@ internal class OpenAiStreamTranslator(
     /** A terminal the collector never got wins, so a stream always ends in one; after one it got, nothing. */
     fun fail(failure: ProviderFailure): List<ProviderStreamEvent> =
         if (state == State.OPEN) {
-            pending(failed(failure))
+            end(listOf(ProviderStreamEvent.Failed(failure)))
         } else {
             undelivered.also { undelivered = emptyList() }
         }
 
-    private fun pending(event: ProviderStreamEvent): List<ProviderStreamEvent> = listOf(event).also { undelivered = it }
+    private fun end(
+        events: List<ProviderStreamEvent>,
+        to: State = State.ENDED,
+    ): List<ProviderStreamEvent> {
+        undelivered = events
+        state = to
+        return events
+    }
 
     private fun translate(event: SseEvent): ProviderStreamEvent? =
         when {
@@ -83,7 +93,7 @@ internal class OpenAiStreamTranslator(
             }
 
             startsWithDone(event.data) -> {
-                state = State.DRAINING
+                feedEnd = State.DRAINING
                 ProviderStreamEvent.Completed
             }
 
@@ -101,16 +111,16 @@ internal class OpenAiStreamTranslator(
 
             is ChunkRead.InBandError -> {
                 errorFields = read.fields
-                failed(classifier.classifyInBand(read.fields))
+                failedInFeed(classifier.classifyInBand(read.fields))
             }
 
             ChunkRead.Unreadable -> {
-                failed(ProviderFailure.UpstreamError)
+                failedInFeed(ProviderFailure.UpstreamError)
             }
         }
 
-    private fun failed(failure: ProviderFailure): ProviderStreamEvent {
-        state = State.ENDED
+    private fun failedInFeed(failure: ProviderFailure): ProviderStreamEvent {
+        feedEnd = State.ENDED
         return ProviderStreamEvent.Failed(failure)
     }
 

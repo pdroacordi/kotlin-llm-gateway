@@ -7,6 +7,7 @@ import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
@@ -38,6 +39,22 @@ class ErrorEnvelopeIntegrationTest(
     @Autowired private val context: ApplicationContext,
     @Autowired private val httpHandler: HttpHandler,
 ) {
+    private var mark = 0
+
+    // Skips the class-level capture: docs/knowledge/gotchas/output-capture-all-includes-the-class-level-capture.md
+    @BeforeEach
+    fun markLog(output: CapturedOutput) {
+        mark = output.length
+    }
+
+    // Every ERROR of this test, with the request ID or not. Log lines start at column 0; stack frames, which can quote
+    // this test's name, are indented.
+    private fun ownErrorLines(output: CapturedOutput): List<String> =
+        output.all
+            .substring(mark)
+            .lines()
+            .filter { it.trimStart() == it && " ERROR " in it }
+
     @Test
     fun `an unknown route gives 404 with exactly the OpenAI envelope`() {
         client
@@ -127,6 +144,7 @@ class ErrorEnvelopeIntegrationTest(
             .until { output.all.lines().any { " ERROR " in it && "[$requestId]" in it } }
         val errorLines = output.all.lines().filter { " ERROR " in it && "[$requestId]" in it }
         assertEquals(1, errorLines.size) { output.all }
+        assertEquals(errorLines, ownErrorLines(output)) { output.all }
         val stackTrace =
             output.all
                 .substringAfter(errorLines.single())
@@ -167,9 +185,9 @@ class ErrorEnvelopeIntegrationTest(
         runCatching { httpHandler.handle(request, response).block() }
 
         val requestId = checkNotNull(response.headers.getFirst(GatewayHeaders.REQUEST_ID))
-        // Log lines start at column 0; stack frames, which can quote this test's name, are indented.
-        val errorLines = output.all.lines().filter { it.trimStart() == it && " ERROR " in it && "[$requestId]" in it }
+        val errorLines = ownErrorLines(output)
         assertEquals(1, errorLines.size) { output.all }
+        assertTrue("[$requestId]" in errorLines.single()) { errorLines.single() }
         assertFalse(QUERY in output.all) { output.all }
     }
 

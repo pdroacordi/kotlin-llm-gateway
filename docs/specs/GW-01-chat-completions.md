@@ -183,15 +183,16 @@ The eight new rows of `toReply`, all `ProviderFailure` variants. Each 5xx messag
 | 401, 403 | `UpstreamAuthFailed` | 502 | `server_error` | `upstream_auth_failed` | `null` | `The gateway could not authenticate with the provider. Include the request ID <id> if you report it.` | `x-should-retry: false` |
 | 429 with `error.code` or `error.type` in the quota set below | `UpstreamQuotaExhausted` | 503 | `server_error` | `upstream_quota_exhausted` | `null` | `The gateway's provider account has no quota left. Include the request ID <id> if you report it.` | `x-should-retry: false` |
 | Any other 429 | `UpstreamRateLimited(retryAfter)` | 429 | `rate_limit_error` | `upstream_rate_limited` | `null` | `The provider is rate limiting the gateway; retry later.` | `retry-after`, `retry-after-ms` when known |
-| 503; nothing was sent: connection refused or unreachable, unknown host, TLS handshake failure, pool acquire timeout or full queue | `ProviderUnavailable(retryAfter)` | 503 | `server_error` | `provider_unavailable` | `null` | `The provider cannot be reached or is overloaded. Include the request ID <id> if you report it.` | `retry-after`, `retry-after-ms` when known |
+| 503; nothing was sent: connection refused or unreachable, unknown host, a TLS handshake that failed, pool acquire timeout or full queue | `ProviderUnavailable(retryAfter)` | 503 | `server_error` | `provider_unavailable` | `null` | `The provider cannot be reached or is overloaded. Include the request ID <id> if you report it.` | `retry-after`, `retry-after-ms` when known |
 | 408, 504; `request-timeout` exceeded | `UpstreamTimeout` | 504 | `server_error` | `upstream_timeout` | `null` | `The provider did not answer in time. Include the request ID <id> if you report it.` | – |
-| 404 without `model_not_found` (a wrong base URL); any other status outside 2xx; any other transport failure, such as a connection closed or reset after the request was written, a reply that is not HTTP or headers over 8 KB; response over the limit; 2xx body not a readable completion | `UpstreamError` | 502 | `server_error` | `upstream_error` | `null` | `The provider returned an error or an unreadable response. Include the request ID <id> if you report it.` | – |
+| 404 without `model_not_found` (a wrong base URL); any other status outside 2xx; any other transport failure, such as a connection closed or reset after the request was written, a peer that closes during the TLS handshake, a reply that is not HTTP or headers over 8 KB; response over the limit; 2xx body not a readable completion | `UpstreamError` | 502 | `server_error` | `upstream_error` | `null` | `The provider returned an error or an unreadable response. Include the request ID <id> if you report it.` | – |
 
 - Quota set: `insufficient_quota`, `credit_balance_exhausted`, `organization_spend_limit_exceeded`, `project_spend_limit_exceeded`, `organization_usage_limit_exceeded` (OpenAI error-codes guide; `insufficient_quota` from FND-03's override note).
 - `type` for 429 is `rate_limit_error`, the value OpenAI's rate-limit guide documents. FND-04 reserves `requests`/`tokens` for RL-01's team limit, a different condition.
 - `code` and `param` from the provider are relayed only if they match `^[a-z0-9_.-]{1,64}$` and `^[A-Za-z0-9_.\[\]-]{1,128}$`; otherwise `null`, then the fallback code. Examples that pass: `context_length_exceeded`, `messages[0].content`.
 - `retryAfter`: `retry-after-ms`, else `retry-after` as seconds, else as an HTTP-date against the injected clock. Unparsable or not positive is `null`. `retry-after` goes out as whole seconds rounded up, `retry-after-ms` as milliseconds.
 - `provider_unavailable` means nothing was sent, so a fallback may repeat the call. Every other transport failure is `upstream_error`: a future fallback must not repeat a call the provider may have billed. (Decided by the orchestrator, 2026-11-03, after the GW-01 smoke.)
+- A peer that closes during the TLS handshake is 502 `upstream_error`, although nothing was sent: it raises a closed-channel exception, which a close after the write raises too, so the 503 rule is not widened to it ([gotcha](../knowledge/gotchas/tls-peer-close-during-handshake-is-a-closed-channel-exception.md)).
 - A provider's `Content-Type` plays no part: the body is read as bytes, so a value that cannot be parsed changes nothing.
 - `ProviderUnavailable` is reserved for RTE-02 in FND-04. GW-01 ships it first with the same row, because to a client "the only deployment is down" and "the chain is exhausted" are one condition.
 
@@ -489,7 +490,7 @@ sequenceDiagram
 | Event | Behaviour | Why |
 |---|---|---|
 | Provider slow | `request-timeout` (300 s) bounds the whole call through `Mono.timeout`, then 504. The subscription is cancelled, so the connection closes. | A non-stream completion sends nothing until it is done, so any shorter limit cuts long generations. Below openai-python's 600 s, so the client gets a 504 rather than its own timeout. |
-| Provider down | Connect timeout 5 s (Reactor Netty's default is 30 s), TLS handshake 10 s (Reactor Netty default), DNS query 5 s (default), pool acquire 5 s (default 45 s): each gives 503 `provider_unavailable`. Fail-closed: there is no answer to give. | Fails fast enough for RTE-02 to fall back later. |
+| Provider down | Connect timeout 5 s (Reactor Netty's default is 30 s), TLS handshake 10 s (Reactor Netty default), DNS query 5 s (default), pool acquire 5 s (default 45 s): each gives 503 `provider_unavailable`, except a peer that closes during the handshake, which gives 502 (section 4). Fail-closed: there is no answer to give. | Fails fast enough for RTE-02 to fall back later. |
 | Retries | None in the adapter or service. `disableRetry(true)` stays on the `HttpClient`, so Reactor Netty never repeats a call on its own (decided by the orchestrator, 2026-11-03). | RTE-02 owns them; CLAUDE.md allows them only before the first byte. openai-python retries 408, 409, 429 and ≥ 500 twice by default (openai-java also retries twice), which is why auth and quota failures carry `x-should-retry: false`. |
 | Client disconnects | WebFlux cancels the request; the coroutine is cancelled; `awaitSingle` cancels the Mono; Reactor Netty closes the upstream connection. The provider may still bill the partial call; COST-02 owns that. | Upstream work stops, so a dead client does not hold a pool slot. |
 | `CancellationException` | Never caught: the adapter catches named exception types only. | CLAUDE.md. |
@@ -985,4 +986,9 @@ Append-only, newest at the bottom. Every session on this item ends with an entry
 - **Who:** orchestrator.
 - **Done:** `tools/smoke/live-openai.sh` passed against api.openai.com ([run](../knowledge/runs/2026-11-04-live-openai.md)): TLS, completion, real 400, 401 and 404 bodies.
 - **Decisions:** user, 2026-11-04: "Eu autorizo a chamada live paga a openAi".
+- **Next:** none.
+
+### 2026-11-04: second review fixes
+- **Who:** orchestrator.
+- **Done:** section 4 says a peer closing during the TLS handshake is 502, not 503. `live-openai.sh` compares the key in the shell, reads no commented line and accepts `export `; `tools/smoke/live-openai-test.sh` holds the `.env` fixtures. `LoopbackHostSocketTest` proves over a socket what a mock exchange cannot: malformed `Host` values get Reactor Netty's empty 400, and two `Host` lines get 403. ERROR counts in `ErrorEnvelopeIntegrationTest` read every line from a mark.
 - **Next:** none.

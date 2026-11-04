@@ -26,3 +26,7 @@ On Netty 4.2.19 and Reactor Netty 1.3.8, `WriteTimeoutHandler` times each write 
 To measure a stall, use `IdleStateHandler` with `observeOutput` and close only with bytes pending, as `ClientStallHandler` does since GW-02: a first event says only that no write completed, so count from it. For `WriteTimeoutHandler` itself:
 
 Find the request from the stream's own `Stream cancelled` line, which carries the ID. For a non-stream response nothing does: there the WARN is all there is. Treat the value as a floor on client throughput, queued bytes over the timeout, not as a stall time.
+
+## Revision (2026-11-04)
+
+"Use `IdleStateHandler` with `observeOutput`" above is out of date: it reads a frame joining the queue as progress ([gotcha](netty-idle-observe-output-counts-queue-growth-as-progress.md)). `ClientStallHandler` keeps it off and compares `current()` and `currentProgress()` itself.

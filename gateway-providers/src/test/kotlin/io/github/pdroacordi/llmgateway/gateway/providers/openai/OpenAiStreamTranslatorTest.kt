@@ -11,6 +11,9 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import tools.jackson.databind.json.JsonMapper
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class OpenAiStreamTranslatorTest {
     private val trees = JsonMapper.builder().build().exactTreeReader()
@@ -164,6 +167,41 @@ class OpenAiStreamTranslatorTest {
         assertEquals(events, translator.fail(ProviderFailure.UpstreamTimeout))
     }
 
+    // A deadline fires on the collector's side, so what makes the stream read as ended comes after the terminal.
+    private fun assertDeadlineGetsTerminal(
+        hasEnded: (OpenAiStreamTranslator) -> Boolean,
+        end: (OpenAiStreamTranslator) -> Unit,
+    ) {
+        repeat(RACE_ROUNDS) {
+            val racing = OpenAiStreamTranslator(OpenAiChunkReader(trees), OpenAiFailureClassifier(trees), LIMIT)
+            val watching = AtomicBoolean()
+            val deadline =
+                CompletableFuture.supplyAsync {
+                    watching.set(true)
+                    while (!hasEnded(racing)) Thread.onSpinWait()
+                    racing.fail(ProviderFailure.UpstreamTimeout)
+                }
+            while (!watching.get()) Thread.onSpinWait()
+
+            end(racing)
+
+            assertEquals(listOf(ProviderStreamEvent.Completed), deadline.get(RACE_WAIT_S, TimeUnit.SECONDS))
+        }
+    }
+
+    @Test
+    fun `a deadline that sees a feed end the stream gets the terminal event`() {
+        assertDeadlineGetsTerminal({ it.draining }, { it.feed(event("[DONE]").encodeToByteArray()) })
+    }
+
+    @Test
+    fun `a deadline that sees finish end the stream gets the terminal event`() {
+        assertDeadlineGetsTerminal({ it.ended }) {
+            it.feed(event(FINISH).encodeToByteArray())
+            it.finish()
+        }
+    }
+
     @Test
     fun `one chunk split over three feeds gives one Chunk`() {
         val text = event(CONTENT)
@@ -194,6 +232,8 @@ class OpenAiStreamTranslatorTest {
 
     private companion object {
         const val LIMIT = 1024
+        const val RACE_ROUNDS = 20_000
+        const val RACE_WAIT_S = 5L
         const val CONTENT = """{"id":"c","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"Hi"}}]}"""
         const val FINISH =
             """{"id":"c","created":1,"model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"""

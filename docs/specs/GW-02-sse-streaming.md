@@ -473,7 +473,7 @@ private fun wire(...): Flux<Batch> =
 |---|---|---|
 | `SseFrames` | `.web` | Pure. `data(json: ByteArray): ByteArray` gives `data: <json>\n\n`, rejecting a raw line break; `DONE`. |
 | `SseBodyInserter(context, frames)`, `frames: (HttpHeaders) -> Flow<ByteArray>` | `.web` | `writeAndFlushWith`, one inner `Mono` per frame, and its own teardown of the flow. |
-| `ClientStallHandler(timeout)` | `.web` | `IdleStateHandler` with `observeOutput`: closes a connection with bytes pending and no write progress. |
+| `ClientStallHandler(timeout)` | `.web` | `IdleStateHandler` with `observeOutput` off, and the pure `StallClock`: closes a connection with bytes pending and no write progress. |
 | `ChatChunkWriter` | `.chat` | Pure. `ChatChunk` to `ObjectNode`, given `includeUsage`. |
 | `ChatStreamFrames` | `.chat` | Pure over a flow: `Flow<ChatStreamEvent>` to `Flow<ByteArray>`. |
 | `ChatStreamLog(clock, requestId)` | `.chat` | `started()` at the first chunk, `end(summary)`: `StreamSummary` to one log line. |
@@ -635,7 +635,7 @@ Buffers: a retained `ByteBuf` exists only between `getBody()`'s `.map` and `copy
 
 Per stream that is about 100 frames plus 8 upstream reads, roughly 30 KB of frames at 300 bytes each, worst case about 100 frames of `max-event-size`. Figures are read from source; `SlowClientStreamTest` proves a plateau, not the number. Measured on Windows loopback: the flow stopped at `chunks=152` on 16 KB frames and 464 on ordinary frames (smoke finding 5), about 1.5 times the figure for 16 KB frames, because socket buffers add to it.
 
-A client that stops reading has bytes pending and no write progress: at `client-write-timeout` the connection closes, the chain cancels, and the upstream slot frees. The cut comes 1 to 1.5 timeouts after the last progress, inside `idle-timeout` at the defaults. Queue time does not count.
+A client that stops reading has bytes pending and no write progress: at `client-write-timeout` the connection closes, the chain cancels, and the upstream slot frees. The cut comes 1 to 1.5 timeouts after the last progress, inside `idle-timeout` at the defaults. Queue time does not count, and a frame joining the queue is not progress, so a provider that keeps sending does not delay the cut.
 
 A client that keeps reading slows the provider, down to two limits, one on the connection and one on the stream (corrected 2026-11-04, smoke R1 and R2; this paragraph said "nothing is dropped"). At the defaults, on 16 KB frames, Windows loopback:
 
@@ -972,6 +972,7 @@ The cross-cutting summary of -001, -002, -005 and -007 is [ADR-019](../DECISIONS
 - **Date:** 2026-11-03
 - **Revision (2026-11-04):** T3's handler measured the queue, not a stall: `WriteTimeoutHandler` times each write from `write()`, so a frame behind a backlog timed out for a client still reading ([bug](../knowledge/bugs/client-write-timeout-cuts-a-slow-client-that-is-still-reading.md), smoke finding 2). Orchestrator's decision: `ClientStallHandler`, an `IdleStateHandler` with `observeOutput`, closes only when bytes are pending and no write progressed for `client-write-timeout`. Same property and startup check. A stall is cut 1 to 1.5 timeouts after its last progress. Progress is seen only as the kernel takes bytes, so a reader is safe down to one kernel step per timeout, not literally at any rate: at a 1 s timeout on Windows 160 KB/s held and 80 KB/s was cut; on Linux a bounded `SO_SNDBUF` kept 32 KB/s. The WARN of the old handler is gone: the handler logs one INFO with the connection ID.
 - **Revision (2026-11-04, after the rerun):** the limit above holds for the connection only, and its figures are now measured: at a 1 s timeout on Windows, with idle 60 s, 85.6 KB/s held and 70.8 KB/s was cut; at the 30 s default the edge is 2 to 3 KB/s. "160 KB/s held" depends on `idle-timeout`: at idle 2 s, 146 KB/s got an `upstream_timeout` frame. Above the stall limit a slow reader can still lose the stream to `idle-timeout`, at the defaults below an edge between 11.8 and 19.7 KB/s on 16 KB frames (smoke R1; [gotcha](../knowledge/gotchas/client-stall-handler-moves-slow-readers-onto-idle-timeout.md)). The corner accepted here is that wide, and GW-08 is its follow-up. No production `SO_SNDBUF`: a bounded one would lower the stall limit at a throughput cost (orchestrator's decision, Log).
+- **Revision (2026-11-04, second review):** `observeOutput` reads a frame joining the queue as progress, so a stopped client on a slow stream was cut at 27.5 s on a 1 s timeout, when `MonoSendMany` ran out of demand ([bug](../knowledge/bugs/client-stall-handler-misses-a-stall-while-the-queue-grows.md)). `ClientStallHandler` now runs with `observeOutput` off and `StallClock` restarts the count only on a completed write, a new first message or a change in `currentProgress()`, with nothing pending counting as no stall. That replaces the gap check: no tick is silent any more. Property, tick, startup check and the 1 to 1.5 timeouts are unchanged; the same client is cut in 1.6 s on Windows. The handler lives one HTTP request, not one channel, since `doOnConnection` runs per request ([gotcha](../knowledge/gotchas/reactor-netty-do-on-connection-runs-per-http-request.md)); its state needs no more.
 
 ### ADR-GW-02-010: Stream headers and `stream_options` validation
 - **Context:** OpenAI's reference: `stream_options`, "Only set this when you set `stream: true`"; it does not state the failure. Public reports show a 400: "The 'stream_options' parameter is only allowed when 'stream' is enabled." nginx honours `X-Accel-Buffering` per response. HTTP/1.1 is persistent by default.
@@ -1123,4 +1124,9 @@ Append-only, newest at the bottom. Every session on this item ends with an entry
 ### 2026-11-04: live run
 - **Who:** orchestrator.
 - **Done:** real streams passed through the parser with and without `include_usage` ([run](../knowledge/runs/2026-11-04-live-openai.md)). Still unproven: real in-band errors and how promptly OpenAI closes after `[DONE]`.
+- **Next:** none.
+
+### 2026-11-04: second review fixes
+- **Who:** orchestrator.
+- **Done:** `ClientStallHandler` measures only what the kernel takes (ADR-GW-02-009, second revision), with a trickling-provider case, a Linux-only large-frame case and `StallClockTest` for each branch. `readBody` fails on EOF. `StreamDisconnectIntegrationTest` counts every ERROR from a mark. `OpenAiStreamTranslator` publishes a terminal event before the state that says the stream ended, so a deadline firing during a feed cannot lose it. Stale text fixed: the `ChatChunkWriter` KDoc, the handler's KDoc, the roadmap row.
 - **Next:** none.

@@ -354,3 +354,7 @@ This answers the first run's unattributed drift. The rise comes in the first rou
 ## Revision (2026-11-04, naming)
 
 The extension member shown above as `x_gateway` was renamed `llmgw` after this run (ADR-019).
+
+## Revision (2026-11-04, second review)
+
+Build f7e38ee plus the uncommitted second-review fixes. `HANG=1 bash tools/smoke/streaming.sh` on the built jars, with `LLMGW_PROVIDERS_OPENAI_STREAM_IDLE_TIMEOUT=2s`, `LLMGW_PROVIDERS_OPENAI_STREAM_FIRST_BYTE_TIMEOUT=2s` and `LLMGW_SERVER_CLIENT_WRITE_TIMEOUT=1s`: 68 PASS, 0 FAIL, 0 SKIP, exit 0. Scenario 12, a client that stops reading, stays manual and was not repeated by hand; `StalledClientStreamTest` covers the changed handler on real sockets, on Windows and on Linux.

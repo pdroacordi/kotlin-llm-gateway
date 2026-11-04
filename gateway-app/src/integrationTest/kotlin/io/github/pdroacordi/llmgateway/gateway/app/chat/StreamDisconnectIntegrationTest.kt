@@ -3,6 +3,7 @@ package io.github.pdroacordi.llmgateway.gateway.app.chat
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.params.ParameterizedTest
@@ -17,6 +18,14 @@ import java.net.Socket
 @TestPropertySource(properties = ["logging.level.io.github.pdroacordi.llmgateway.gateway.app.chat=DEBUG"])
 @ExtendWith(OutputCaptureExtension::class)
 class StreamDisconnectIntegrationTest : MockBackedTest() {
+    private var mark = 0
+
+    // Skips the class-level capture: docs/knowledge/gotchas/output-capture-all-includes-the-class-level-capture.md
+    @BeforeEach
+    fun markLog(output: CapturedOutput) {
+        mark = output.length
+    }
+
     /** Reads until [marker] was seen, then closes: SO_LINGER 0 makes the close a reset. Returns the request ID. */
     private fun closingAt(
         marker: String,
@@ -104,11 +113,9 @@ class StreamDisconnectIntegrationTest : MockBackedTest() {
             val line = endLines(requestId, output).single()
             assertTrue("outcome=completed" in line || "outcome=cancelled" in line) { line }
         }
-        assertFalse(
-            output.all.lines().any { line ->
-                " ERROR " in line && requestIds.any { it in line }
-            },
-        ) { output.all }
+        // Every ERROR of this test: Reactor Netty's "Error finishing response" carries no request ID.
+        val log = output.all.substring(mark)
+        assertFalse(log.lines().any { it.trimStart() == it && " ERROR " in it }) { log }
     }
 
     private companion object {

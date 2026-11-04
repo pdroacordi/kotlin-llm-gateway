@@ -38,3 +38,7 @@ Fixed in the GW-02 commit (Roadmap: GW-02), by the orchestrator's decision to ch
 ## Revision (2026-11-04)
 
 "What remains" under Fix is not all that remains. The stall limit binds the connection only: above it a slow reader can still lose the stream to `idle-timeout`, at the defaults below about 11.8 to 19.7 KB/s on 16 KB frames, with an `upstream_timeout` frame that blames a healthy provider (smoke R1, [gotcha](../gotchas/client-stall-handler-moves-slow-readers-onto-idle-timeout.md)). So "nothing is dropped" no longer stands as written; the follow-up is GW-08. The limit in the Fix is measured now: 2 to 3 KB/s at the 30 s default.
+
+## Revision (2026-11-04, second review)
+
+`observeOutput`, named under Fix, is gone: it read queue growth as progress ([bug](client-stall-handler-misses-a-stall-while-the-queue-grows.md)). `ClientStallHandler` now compares the outbound buffer itself, with the same limits.

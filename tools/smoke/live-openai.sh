@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Paid check against the real OpenAI API: TLS, real bodies and real error shapes, which the mock cannot prove.
-# Costs under one US cent a run (two short completions; the error checks are refused before any tokens). Never in CI;
+# Costs under one US cent a run (three short completions; the error checks are refused before any tokens). Never in CI;
 # run it only with the user's go-ahead (CLAUDE.md, Testing). It starts its own gateway-app and stops it.
 # Usage, from anywhere: bash tools/smoke/live-openai.sh
 # The key comes from .env at the repo root (gitignored, see .env.example). The file is read as KEY=VALUE, never
@@ -38,9 +38,29 @@ fail() {
     failed=1
 }
 
-# The last value of a KEY=VALUE line, without quotes or a Windows line ending.
+# The last value of a KEY=VALUE line, with an optional `export `, without quotes or a Windows line ending. The class
+# before the name passes a byte order mark and blanks; it must not pass the comment sign.
 file_value() {
-    sed -n "s/^[^A-Za-z]*$1[[:space:]]*=[[:space:]]*//p" "$KEY_FILE" | tail -1 | tr -d "\r\"'" | sed 's/[[:space:]]*$//'
+    sed -n "s/^[^A-Za-z0-9_#]*\(export[[:space:]][[:space:]]*\)\{0,1\}$1[[:space:]]*=[[:space:]]*//p" "$KEY_FILE" |
+        tail -1 | tr -d "\r\"'" | sed 's/[[:space:]]*$//'
+}
+
+# True when file $2 has content and no line matches $1. An empty file or a grep error proves nothing, so it is false.
+lacks() {
+    [ -s "$2" ] || return 1
+    grep -q -- "$1" "$2"
+    [ $? -eq 1 ]
+}
+
+# $1: check name, $2: the text. Compared in the shell, as the text can be the key: no process gets it as an argument.
+check_log_lacks() {
+    if [ ! -s "$LOG" ]; then
+        fail "$1" "no log to read at $LOG"
+    elif [[ "$(<"$LOG")" == *"$2"* ]]; then
+        fail "$1" "found"
+    else
+        pass "$1"
+    fi
 }
 
 [ -f "$KEY_FILE" ] || {
@@ -77,6 +97,11 @@ JAVA="$(java_25)" || {
 
 # $1: the key, $2: the log file.
 start_gateway() {
+    # Whatever answers here would pass for this gateway, and its log is not the one checked.
+    if curl -fs -o /dev/null --max-time 2 "$GATEWAY/actuator/health"; then
+        echo "Something already answers on port $PORT: stop it, or set LIVE_PORT."
+        exit 2
+    fi
     OPENAI_API_KEY="$1" LLMGW_PROVIDERS_OPENAI_BASE_URL="$BASE_URL" SERVER_PORT="$PORT" \
         "$JAVA" -jar "$ROOT/gateway-app/build/libs/gateway-app.jar" > "$2" 2>&1 &
     gateway_pid=$!
@@ -92,8 +117,12 @@ start_gateway() {
     done
 }
 
+# A failed call must leave nothing of the last one for the checks to read.
+clear_reply() { : > "$HEADERS"; : > "$BODY"; }
+
 # $1: JSON body. Sets status; the headers and body land in $HEADERS and $BODY.
 post() {
+    clear_reply
     status=$(curl -s --max-time 120 -D "$HEADERS" -o "$BODY" -w '%{http_code}' -H 'Content-Type: application/json' \
         -d "$1" "$ROUTE")
 }
@@ -119,9 +148,10 @@ tokens=$(member total_tokens)
 if [ -n "$tokens" ] && [ "$tokens" -gt 0 ] 2>/dev/null; then pass "provider usage ($tokens tokens)"; else fail "provider usage" "total_tokens '$tokens'"; fi
 [ -n "$(header x-request-id)" ] && pass "x-request-id" || fail "x-request-id" "missing"
 [ "$(header x-gateway-deployment)" = openai ] && pass "x-gateway-deployment" || fail "x-gateway-deployment" "'$(header x-gateway-deployment)'"
-[ -z "$(header x-gateway-usage-estimated)" ] && pass "usage not estimated" || fail "usage not estimated" "estimated"
+[ "$status" = 200 ] && [ -z "$(header x-gateway-usage-estimated)" ] && pass "usage not estimated" || fail "usage not estimated" "status $status, '$(header x-gateway-usage-estimated)'"
 
 # 2. A real stream, with the client asking for usage.
+clear_reply
 timing=$(curl -s -N --max-time 120 -D "$HEADERS" -o "$BODY" -w '%{http_code} %{time_starttransfer} %{time_total}' \
     -H 'Content-Type: application/json' \
     -d "{\"model\":\"$MODEL\",$ask,$limit,\"stream\":true,\"stream_options\":{\"include_usage\":true}}" "$ROUTE")
@@ -129,14 +159,15 @@ set -- $timing
 if [ "$1" = 200 ] && grep -q '^data: \[DONE\]' "$BODY"; then pass "stream ends in [DONE]"; else fail "stream ends in [DONE]" "status $1, error $(member code)"; fi
 case "$(header content-type)" in text/event-stream*) pass "stream content type" ;; *) fail "stream content type" "$(header content-type)" ;; esac
 if grep -q '"usage":{"prompt_tokens"' "$BODY"; then pass "stream usage chunk"; else fail "stream usage chunk" "absent"; fi
-if grep -q '"llmgw"' "$BODY"; then fail "stream usage is the provider's" "flagged as estimated"; else pass "stream usage is the provider's"; fi
+if lacks '"llmgw"' "$BODY"; then pass "stream usage is the provider's"; else fail "stream usage is the provider's" "flagged as estimated, or no body"; fi
 info "stream first byte, total" "$2 s, $3 s"
 info "stream events" "$(grep -c '^data: ' "$BODY")"
 
 # 3. The same stream without usage: asked upstream anyway, not shown.
+clear_reply
 curl -s -N --max-time 120 -o "$BODY" -H 'Content-Type: application/json' \
     -d "{\"model\":\"$MODEL\",$ask,$limit,\"stream\":true}" "$ROUTE"
-if grep -q '"usage":{"prompt_tokens"' "$BODY"; then fail "usage stripped" "a usage chunk reached the client"; else pass "usage stripped"; fi
+if lacks '"usage":{"prompt_tokens"' "$BODY"; then pass "usage stripped"; else fail "usage stripped" "a usage chunk reached the client, or no body"; fi
 grep -q '^data: \[DONE\]' "$BODY" && pass "stripped stream ends in [DONE]" || fail "stripped stream ends in [DONE]" "$(member code)"
 
 # 4. Real error bodies: refused by OpenAI before any tokens are spent.
@@ -144,11 +175,11 @@ post "{\"model\":\"llmgw-no-such-model\",$ask,$limit}"
 if [ "$status" = 404 ]; then pass "unknown model 404 ($(member code))"; else fail "unknown model 404" "status $status, code $(member code)"; fi
 post "{\"model\":\"$MODEL\",$ask,\"temperature\":99}"
 if [ "$status" = 400 ]; then pass "bad parameter 400 (code $(member code), param $(member param))"; else fail "bad parameter 400" "status $status, code $(member code)"; fi
-if grep -q 'Invalid\|invalid value\|temperature.*99' "$BODY"; then fail "provider message not relayed" "provider text in the body"; else pass "provider message not relayed"; fi
+if [ "$status" = 400 ] && lacks 'Invalid\|invalid value\|temperature.*99' "$BODY"; then pass "provider message not relayed"; else fail "provider message not relayed" "status $status, provider text in the body, or no body"; fi
 
 # 5. Nothing secret in the log.
-if grep -qF -- "$KEY" "$LOG"; then fail "key not in the log" "found"; else pass "key not in the log"; fi
-if grep -qF -- "$CANARY" "$LOG"; then fail "prompt not in the log" "found"; else pass "prompt not in the log"; fi
+check_log_lacks "key not in the log" "$KEY"
+check_log_lacks "prompt not in the log" "$CANARY"
 stop_gateway
 sleep 2
 

@@ -53,7 +53,7 @@ Rule for callers: tests that share one mock isolate by model name and never rese
 - **Faults after commit**: `disconnect` and a `stall` at `mock.max-hold` raise `MockConnectionAbort` from the body publisher. The mapper sees a committed response, logs DEBUG by type (Reactor Netty still logs one ERROR line, see Failure behaviour) and returns the error (`abortAfterCommit`, `MockErrorWebExceptionHandler.kt:55`). Any other failure after commit is logged at ERROR and replaced by a stackless `MockConnectionAbort` naming the request, so its checkpoint and raw query never reach Reactor Netty's log (`MockCommittedResponseIntegrationTest`). Reactor Netty then closes the connection without the terminating chunk: WebClient reports `PrematureCloseException`, and a raw socket reads `200`, part of the body, then EOF.
 - **Errors** (`MockErrorWebExceptionHandler.kt:26`): framework failures, `MockRejection` (validation, credentials, admin input) and bugs become the route's provider shape, Anthropic under `/v1/messages/**`, OpenAI elsewhere and on `/__mock`. 5xx bodies never carry an exception message.
 - **Journal** (`RequestJournal.kt`): one `AtomicReference` state per epoch holding a lock-free ring (`AtomicReferenceArray` plus a write counter) and `LongAdder` counts. `arrive` reads the epoch before taking the sequence (`:40-41`); `complete` reads the state once and drops an entry from an older epoch (`:50-51`). `reset` swaps the state (`:77-78`); the sequence never rewinds. An entry is written after its response reaches the client, so the two read endpoints wait for `inFlight` 0 (`awaitJournalSettled`, `AdminHandlers.kt:105`; [bug](../bugs/mock-journal-entry-visible-after-the-response.md)).
-- **Container**: `mock-provider/Dockerfile` (`eclipse-temurin:25-jre-noble` pinned by digest, non-root) plus the boot jar `mock-provider.jar`, exposed to other projects as the consumable configuration `mockProviderBootJar` (category attribute `mock-provider-boot-jar`). `MockProviderImageTest` builds it with `ImageFromDockerfile` in the `integrationTest` suite (ADR-016).
+- **Container**: `mock-provider/Dockerfile` (`eclipse-temurin:25-jre-noble` pinned by digest, non-root, `SERVER_ADDRESS=0.0.0.0`, since a published port reaches the container's own interface) plus the boot jar `mock-provider.jar`, exposed to other projects as the consumable configuration `mockProviderBootJar` (category attribute `mock-provider-boot-jar`). `MockProviderImageTest` builds it with `ImageFromDockerfile` in the `integrationTest` suite (ADR-016).
 
 ## Failure behaviour
 
@@ -73,6 +73,7 @@ Rule for callers: tests that share one mock isolate by model name and never rese
 
 | Property | Default | Note |
 |---|---|---|
+| `server.address` | `127.0.0.1` | The journal keeps prompts. The image sets `SERVER_ADDRESS=0.0.0.0`. |
 | `server.port` | 8090 | CLAUDE.md local ports |
 | `server.shutdown` | `immediate` | Graceful would wait out held requests. |
 | `spring.reactor.netty.shutdown-quiet-period` | `0s` | The 2 s default delays every stop. |

@@ -45,3 +45,7 @@ Canonical use: FND-04 spec, section 5 (`docs/specs/FND-04-request-context-and-er
 - Reactor callbacks outside the coroutine (for example a `WebClient` exchange in an adapter) do not see this MDC until Micrometer context propagation is enabled (OBS-01).
 - Exchange attributes and coroutine elements are per request. Never cache them in a bean.
 - Functional `coRouter` handlers: check that they receive the attribute-carried context before relying on it (unverified in FND-04).
+
+## Revision (2026-11-03)
+
+The `coRouter` pitfall above is answered from source, with the runtime proof left to GW-01. On the Spring Framework 7.0.x branch, `CoRouterFunctionDsl.CoroutineContextAwareHandlerFunction` reads `CoWebFilter.COROUTINE_CONTEXT_ATTRIBUTE` from the request attributes and runs the handler in `mono(context)`, falling back to `Dispatchers.Unconfined` when the attribute is absent. So a `coRouter` handler sees the element and the MDC copy, as a `suspend` controller does. `ChatRouteContextIntegrationTest` (GW-01 spec, section 8) proves it on a real request. Source: https://github.com/spring-projects/spring-framework/blob/7.0.x/spring-webflux/src/main/kotlin/org/springframework/web/reactive/function/server/CoRouterFunctionDsl.kt

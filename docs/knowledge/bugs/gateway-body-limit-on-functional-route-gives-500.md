@@ -9,6 +9,7 @@ related: [patterns/one-error-funnel, systems/request-context-and-errors]
 created: 2026-11-03
 updated: 2026-11-03
 source_files:
+  - gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/web/RequestBodies.kt
   - gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/error/ExceptionTranslator.kt
   - gateway-app/src/test/kotlin/io/github/pdroacordi/llmgateway/gateway/app/error/ContentTooLargeIntegrationTest.kt
   - gateway-app/src/test/kotlin/io/github/pdroacordi/llmgateway/gateway/app/error/ExceptionTranslatorTest.kt
@@ -34,11 +35,8 @@ Spring translates the limit on one path only. `AbstractMessageReaderArgumentReso
 
 ## Fix
 
-Not fixed, by decision (2026-11-03): no code until GW-01 picks its route style; its roadmap Notes and the systems entry carry the rule. Either option works:
-
-- Treat a top-level `DataBufferLimitException` as `ContentTooLarge`, keeping `Internal` for one wrapped in another exception. The systems entry already says adapters translate their own limit, so a bare one can only come from the request read. Update `ExceptionTranslatorTest:82` and FND-04 translator step 2.
-- If GW-01 uses annotated controllers only, record that in its spec and add a rule or test that no functional route reads a body.
+Fixed in GW-01, at the read and not in the translator (ADR-GW-01-003): `readJsonObject` (`RequestBodies.kt`) is the only body read of a functional route and turns `DataBufferLimitException` into `ContentTooLarge`. A translator rule on a bare `DataBufferLimitException` could not tell the request's limit from an adapter's, so a missed translation in an adapter would blame the client with a 413. `ExceptionTranslatorTest` "a DataBufferLimitException outside the request-body path is a bug, not a 413" is unchanged and passes. The Symptom and Root cause lines describe the code before the fix.
 
 ## Prevention
 
-`ContentTooLargeIntegrationTest` needs a functional route beside the controller probe. Review rule: when a rule depends on how the framework wraps an exception, test each entry path, because controllers and functional handlers translate differently.
+`ContentTooLargeIntegrationTest` has a functional route beside the controller probe: 2 KB to `/v1/chat/completions` at a 1 KB limit gives 413 and no ERROR line. Review rule: when a rule depends on how the framework wraps an exception, test each entry path, because controllers and functional handlers translate differently.

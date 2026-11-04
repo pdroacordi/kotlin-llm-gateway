@@ -24,10 +24,10 @@ What is built, what is next, and what is waiting on a decision. **This is the st
 
 | ID | Item | Status | Needs | Updated | Notes |
 |---|---|:-:|---|---|---|
-| GW-01 | `POST /v1/chat/completions` (non-streaming) through `ChatModelPort`; OpenAI adapter | `[ ]` | FND-03, FND-04 | 2026-11-03 | Creates `systems/provider-adapters`. If routes are functional, translate a request-side DataBufferLimitException to ContentTooLarge ([bugs/gateway-body-limit-on-functional-route-gives-500](knowledge/bugs/gateway-body-limit-on-functional-route-gives-500.md)). |
+| GW-01 | `POST /v1/chat/completions` (non-streaming) through `ChatModelPort`; OpenAI adapter | `[x]` | FND-03, FND-04 | 2026-11-03 | Spec: [GW-01](specs/GW-01-chat-completions.md); cross-cutting [ADR-018](DECISIONS.md#adr-018); systems entry [provider-adapters](knowledge/systems/provider-adapters.md). Creates `systems/provider-adapters`. If routes are functional, translate a request-side DataBufferLimitException to ContentTooLarge ([bugs/gateway-body-limit-on-functional-route-gives-500](knowledge/bugs/gateway-body-limit-on-functional-route-gives-500.md)). Built: an OpenAI SDK with its base URL on the gateway gets a provider-shaped completion through `ChatModelPort`, with unknown members verbatim both ways and every upstream failure a sealed `ProviderFailure` and one error row. Smoke [run](knowledge/runs/2026-11-03-smoke-chat-completions.md) pass-with-findings, findings fixed or recorded; 63 PASS, 0 FAIL on the final jars. Real TLS and OpenAI's real error bodies are unproven: a paid `live` call waits on the user. |
 | GW-02 | SSE streaming end to end; cancellation on client disconnect | `[ ]` | GW-01 | 2026-11-03 | BlockHound already guards `gateway-app` (`BlockHoundIntegrationTest`), so the streaming path runs under it from its first test; the check of `RequestIdGenerator.next()` is settled (FND-04 Log). |
 | GW-03 | Anthropic adapter: messages, tool calls and stream translation | `[ ]` | GW-02 | 2026-11-03 | Extends `mock-provider` with scripted tool calls (ADR-FND-03-011). |
-| GW-04 | Teams and API keys: admin API, HMAC-hashed keys, auth filter | `[ ]` | FND-02, GW-01 | 2026-11-03 | Creates `systems/auth-and-teams`; decides R2DBC vs JDBC (ADR-006). |
+| GW-04 | Teams and API keys: admin API, HMAC-hashed keys, auth filter | `[ ]` | FND-02, GW-01 | 2026-11-03 | Creates `systems/auth-and-teams`; decides R2DBC vs JDBC (ADR-006). Deletes GW-01's stopgap: `ExposureGuard`, `LoopbackHostWebFilter`, `llmgw.security.allow-unauthenticated-exposure` (ADR-GW-01-007). |
 | GW-05 | `POST /v1/embeddings` | `[ ]` | GW-04 | 2026-11-03 | Needed by CACHE-02 and AGT-05. |
 | GW-06 | Tool calling and `response_format` (JSON mode) pass-through | `[ ]` | GW-03 | 2026-11-03 | Extends `mock-provider` with scripted tool calls (ADR-FND-03-011). |
 | GW-07 | Local models through an OpenAI-compatible server | `[?]` | GW-01 | 2026-11-03 | Which local runtime, if any? It would make evals free to run. |
@@ -52,8 +52,8 @@ What is built, what is next, and what is waiting on a decision. **This is the st
 
 | ID | Item | Status | Needs | Updated | Notes |
 |---|---|:-:|---|---|---|
-| RTE-01 | Model aliases and a versioned route table per team | `[ ]` | GW-04 | 2026-11-03 | Creates `systems/routing`. |
-| RTE-02 | Fallback chain, retries with jitter, per-deployment circuit breaker | `[ ]` | RTE-01, GW-02 | 2026-11-03 | |
+| RTE-01 | Model aliases and a versioned route table per team | `[ ]` | GW-04 | 2026-11-03 | Creates `systems/routing`. Replaces GW-01's `PassThroughModelResolver`; owns `GET /v1/models`, which no row had (ADR-004, ADR-GW-01-006). |
+| RTE-02 | Fallback chain, retries with jitter, per-deployment circuit breaker | `[ ]` | RTE-01, GW-02 | 2026-11-03 | Decides on GW-01's `ProviderFailure`. OpenAI requires `X-Client-Request-Id` unique per request, so each attempt needs its own value. A future fallback must not repeat a call the provider may have billed: `ProviderUnavailable` means nothing was sent, and every other transport failure is `UpstreamError`. |
 | RTE-03 | Weighted, latency-aware and cost-aware routing policies | `[ ]` | RTE-02, OBS-02, COST-01 | 2026-11-03 | `ai-eval` suite `routing`. |
 | RTE-04 | Budget-aware downgrade to a cheaper model when a team nears its budget | `[ ]` | RTE-03, COST-03 | 2026-11-03 | |
 

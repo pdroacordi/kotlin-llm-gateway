@@ -57,6 +57,11 @@ val checkCoreClasspath =
                 "com.squareup.okhttp3",
                 "io.ktor",
                 "org.apache.httpcomponents",
+                "tools.jackson",
+                "com.fasterxml.jackson",
+                "org.jetbrains.kotlinx:kotlinx-serialization",
+                "com.openai",
+                "com.anthropic",
             )
         val modules =
             listOf("compileClasspath", "runtimeClasspath").map { name ->

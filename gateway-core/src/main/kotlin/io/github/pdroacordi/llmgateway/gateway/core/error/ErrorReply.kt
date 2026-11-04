@@ -1,6 +1,9 @@
 package io.github.pdroacordi.llmgateway.gateway.core.error
 
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
+import kotlin.time.Duration
+import kotlin.time.DurationUnit
+import kotlin.time.toDuration
 
 /** Status and OpenAI error fields for one [GatewayError]; [headers] names are lowercase. */
 data class ErrorReply(
@@ -16,6 +19,7 @@ data class ErrorReply(
 object ErrorTypes {
     const val INVALID_REQUEST = "invalid_request_error"
     const val SERVER_ERROR = "server_error"
+    const val RATE_LIMIT = "rate_limit_error"
 }
 
 /** Stable discriminators; a shipped (status, type, code) row never changes (ADR-015). */
@@ -29,6 +33,15 @@ object ErrorCodes {
     const val REQUEST_TOO_LARGE = "request_too_large"
     const val UNSUPPORTED_MEDIA_TYPE = "unsupported_media_type"
     const val INTERNAL_ERROR = "internal_error"
+    const val UNSUPPORTED_VALUE = "unsupported_value"
+    const val MODEL_NOT_FOUND = "model_not_found"
+    const val UPSTREAM_REJECTED_REQUEST = "upstream_rejected_request"
+    const val UPSTREAM_AUTH_FAILED = "upstream_auth_failed"
+    const val UPSTREAM_RATE_LIMITED = "upstream_rate_limited"
+    const val UPSTREAM_QUOTA_EXHAUSTED = "upstream_quota_exhausted"
+    const val PROVIDER_UNAVAILABLE = "provider_unavailable"
+    const val UPSTREAM_TIMEOUT = "upstream_timeout"
+    const val UPSTREAM_ERROR = "upstream_error"
 }
 
 internal object HttpStatuses {
@@ -38,13 +51,73 @@ internal object HttpStatuses {
     const val NOT_ACCEPTABLE = 406
     const val CONTENT_TOO_LARGE = 413
     const val UNSUPPORTED_MEDIA_TYPE = 415
+    const val UNPROCESSABLE_CONTENT = 422
+    const val TOO_MANY_REQUESTS = 429
     const val INTERNAL_SERVER_ERROR = 500
+    const val BAD_GATEWAY = 502
+    const val SERVICE_UNAVAILABLE = 503
+    const val GATEWAY_TIMEOUT = 504
     val CLIENT_ERRORS = 400..499
+    val RELAYED_REJECTIONS = setOf(BAD_REQUEST, CONTENT_TOO_LARGE, UNPROCESSABLE_CONTENT)
 }
 
 private const val MAX_PATH_IN_MESSAGE = 200
 
-/** The FND-04 section 4 table. Exhaustive, so a new variant does not compile without its row. */
+// x-should-retry: openai-python obeys it over its status rules, and a retry cannot help these two (ADR-GW-01-005).
+private val NO_RETRY = mapOf("x-should-retry" to "false")
+
+/** A 5xx row of GW-01 section 4; the message gains the request ID, as ADR-015 requires. */
+private class ServerFailureRow(
+    private val status: Int,
+    private val message: String,
+    private val code: String,
+) {
+    fun reply(
+        requestId: RequestId,
+        headers: Map<String, String> = emptyMap(),
+    ): ErrorReply =
+        ErrorReply(
+            status = status,
+            message = "$message Include the request ID $requestId if you report it.",
+            type = ErrorTypes.SERVER_ERROR,
+            param = null,
+            code = code,
+            headers = headers,
+        )
+}
+
+private val AUTH_FAILED =
+    ServerFailureRow(
+        HttpStatuses.BAD_GATEWAY,
+        "The gateway could not authenticate with the provider.",
+        ErrorCodes.UPSTREAM_AUTH_FAILED,
+    )
+private val QUOTA_EXHAUSTED =
+    ServerFailureRow(
+        HttpStatuses.SERVICE_UNAVAILABLE,
+        "The gateway's provider account has no quota left.",
+        ErrorCodes.UPSTREAM_QUOTA_EXHAUSTED,
+    )
+private val UNAVAILABLE =
+    ServerFailureRow(
+        HttpStatuses.SERVICE_UNAVAILABLE,
+        "The provider cannot be reached or is overloaded.",
+        ErrorCodes.PROVIDER_UNAVAILABLE,
+    )
+private val TIMED_OUT =
+    ServerFailureRow(
+        HttpStatuses.GATEWAY_TIMEOUT,
+        "The provider did not answer in time.",
+        ErrorCodes.UPSTREAM_TIMEOUT,
+    )
+private val UNREADABLE =
+    ServerFailureRow(
+        HttpStatuses.BAD_GATEWAY,
+        "The provider returned an error or an unreadable response.",
+        ErrorCodes.UPSTREAM_ERROR,
+    )
+
+/** The FND-04 and GW-01 section 4 tables. Exhaustive, so a new variant does not compile without its row. */
 fun GatewayError.toReply(requestId: RequestId): ErrorReply =
     when (this) {
         is GatewayError.InvalidRequest -> {
@@ -105,7 +178,79 @@ fun GatewayError.toReply(requestId: RequestId): ErrorReply =
                 code = ErrorCodes.INTERNAL_ERROR,
             )
         }
+
+        is ProviderFailure -> {
+            providerReply(this, requestId)
+        }
     }
+
+private fun providerReply(
+    failure: ProviderFailure,
+    requestId: RequestId,
+): ErrorReply =
+    when (failure) {
+        ProviderFailure.ModelNotFound -> {
+            clientError(
+                HttpStatuses.NOT_FOUND,
+                "The requested model does not exist or is not available.",
+                ErrorCodes.MODEL_NOT_FOUND,
+                param = "model",
+            )
+        }
+
+        is ProviderFailure.RejectedByProvider -> {
+            clientError(
+                failure.status,
+                "The provider rejected the request; see the code and param members.",
+                failure.code ?: ErrorCodes.UPSTREAM_REJECTED_REQUEST,
+                failure.param,
+            )
+        }
+
+        ProviderFailure.UpstreamAuthFailed -> {
+            AUTH_FAILED.reply(requestId, NO_RETRY)
+        }
+
+        ProviderFailure.UpstreamQuotaExhausted -> {
+            QUOTA_EXHAUSTED.reply(requestId, NO_RETRY)
+        }
+
+        is ProviderFailure.UpstreamRateLimited -> {
+            ErrorReply(
+                status = HttpStatuses.TOO_MANY_REQUESTS,
+                message = "The provider is rate limiting the gateway; retry later.",
+                type = ErrorTypes.RATE_LIMIT,
+                param = null,
+                code = ErrorCodes.UPSTREAM_RATE_LIMITED,
+                headers = retryHeaders(failure.retryAfter),
+            )
+        }
+
+        is ProviderFailure.ProviderUnavailable -> {
+            UNAVAILABLE.reply(requestId, retryHeaders(failure.retryAfter))
+        }
+
+        ProviderFailure.UpstreamTimeout -> {
+            TIMED_OUT.reply(requestId)
+        }
+
+        ProviderFailure.UpstreamError -> {
+            UNREADABLE.reply(requestId)
+        }
+    }
+
+private fun retryHeaders(retryAfter: Duration?): Map<String, String> {
+    if (retryAfter == null) return emptyMap()
+    return mapOf(
+        "retry-after" to retryAfter.roundedUp(DurationUnit.SECONDS).toString(),
+        "retry-after-ms" to retryAfter.roundedUp(DurationUnit.MILLISECONDS).toString(),
+    )
+}
+
+private fun Duration.roundedUp(unit: DurationUnit): Long {
+    val whole = toLong(unit)
+    return if (whole.toDuration(unit) < this) whole + 1 else whole
+}
 
 private fun clientError(
     status: Int,

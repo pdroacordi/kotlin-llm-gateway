@@ -1,6 +1,6 @@
 # Request pipeline: chat completion
 
-Updated: 2026-11-03 (target design, before GW-01)
+Updated: 2026-11-03 (target design; GW-01 built the first slice)
 
 ```mermaid
 sequenceDiagram
@@ -53,3 +53,4 @@ sequenceDiagram
 - Input guardrails run before the cache: the key is computed on the redacted prompt, and a prompt blocked today is not served from a cache filled before the rule existed.
 - On a stream, output rules scan a sliding window (GRD-05), and reconciliation and the usage event happen when the stream ends or the client disconnects.
 - Each participant is a span (OBS-01).
+- Built by GW-01: request ID, `ModelResolver` (pass-through to one deployment), `ChatModelPort.complete`, the reply. Auth, limits, guardrails, cache, usage events and streaming are later items.

@@ -8,5 +8,7 @@ RUN groupadd --system mock && useradd --system --gid mock --no-create-home mock
 COPY mock-provider.jar /app/mock-provider.jar
 
 USER mock
+# A published port reaches the container's own interface, not its loopback; the jar alone binds 127.0.0.1.
+ENV SERVER_ADDRESS=0.0.0.0
 EXPOSE 8090
 ENTRYPOINT ["java", "-jar", "/app/mock-provider.jar"]

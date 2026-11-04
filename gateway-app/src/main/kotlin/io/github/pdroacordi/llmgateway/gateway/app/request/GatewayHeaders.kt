@@ -8,6 +8,12 @@ object GatewayHeaders {
     /** OpenAI's `X-Client-Request-Id`; validated and echoed. */
     const val CLIENT_REQUEST_ID = "x-client-request-id"
 
+    /** Extension: which deployment answered, on a 200. */
+    const val DEPLOYMENT = "x-gateway-deployment"
+
+    /** Extension: `true` when the provider omitted usage and the gateway estimated it (ADR-GW-01-011). */
+    const val USAGE_ESTIMATED = "x-gateway-usage-estimated"
+
     // Must match logging.pattern.correlation in application.yaml.
     const val MDC_REQUEST_ID = "requestId"
     const val MDC_CLIENT_REQUEST_ID = "clientRequestId"

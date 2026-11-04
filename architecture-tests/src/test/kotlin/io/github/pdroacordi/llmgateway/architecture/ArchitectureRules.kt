@@ -3,6 +3,7 @@ package io.github.pdroacordi.llmgateway.architecture
 import com.lemonappdev.konsist.api.Konsist
 import com.lemonappdev.konsist.api.declaration.KoAnnotationDeclaration
 import com.lemonappdev.konsist.api.declaration.KoFileDeclaration
+import com.lemonappdev.konsist.api.declaration.KoTypeAliasDeclaration
 import com.lemonappdev.konsist.api.provider.KoAnnotationProvider
 
 /**
@@ -49,6 +50,11 @@ val CORE_FORBIDDEN_PACKAGES: List<String> =
         "org.apache.hc",
         "kotlinx.coroutines.reactor",
         "kotlinx.coroutines.reactive",
+        "tools.jackson",
+        "com.fasterxml.jackson",
+        "kotlinx.serialization",
+        "com.openai",
+        "com.anthropic",
     )
 
 // Value types from java.net that open no connection.
@@ -83,6 +89,9 @@ val ERROR_HANDLING_TYPES: List<String> =
         "org.springframework.web.bind.annotation.RestControllerAdvice",
         "org.springframework.web.bind.annotation.ExceptionHandler",
     )
+
+// The JsonNode to JsonValue conversion: it holds no provider type, and the edge needs it (ADR-GW-01-002).
+val ADAPTER_SHARED_PACKAGES: List<String> = listOf("$BASE_PACKAGE.gateway.providers.json")
 
 private const val FIXTURES_SOURCE_SET = "fixtures"
 private const val MAIN_SOURCE_SET = "main"
@@ -273,6 +282,26 @@ fun errorHandlingOnlyInErrorPackage(
         .filterNot { it.isInAppErrorPackage(modules) }
         .flatMap { errorHandlingIn(it) }
 
+/**
+ * ARCH-12: in an app's `main` code an adapter is named only under `<app root>.config`, so a handler cannot call it past
+ * the port, although ARCH-9 lets the app import the module (ADR-GW-01-010).
+ */
+fun adaptersReferencedOnlyFromWiring(
+    files: List<ModuleFile>,
+    modules: List<Module> = Modules.all,
+): List<String> {
+    val adapterRoots = modules.filter { it.role == Role.ADAPTER }.map { it.rootPackage }
+    val isAdapter = { name: String ->
+        adapterRoots.any { name.isInPackage(it) } && ADAPTER_SHARED_PACKAGES.none { name.isInPackage(it) }
+    }
+    val (wiring, others) =
+        files
+            .filter { it.sourceSet == MAIN_SOURCE_SET && modules.named(it.module)?.role == Role.APP }
+            .partition { it.isInAppWiringPackage(modules) }
+    return others.flatMap { forbiddenReferences(it, "ARCH-12", "ADR-GW-01-010", isAdapter) } +
+        wiring.flatMap { exportedAdapterAliases(it, isAdapter) }
+}
+
 /** Every Kotlin file of the repository except fixtures, `build-logic/` and generated code under `build/`. */
 object ProductionScope {
     val files: List<ModuleFile> by lazy {
@@ -343,10 +372,6 @@ private fun isWiring(name: String): Boolean = WIRING_ANNOTATIONS.any { name.isIn
 
 private fun wiringIn(file: ModuleFile): List<String> {
     val prefix = "ARCH-6 (CLAUDE.md, ADR-005): ${file.path} in ${file.module}"
-    val explicitImports =
-        file.file.imports
-            .filterNot { it.isWildcard }
-            .map { it.name }
     val starImports =
         file.file.imports
             .filter { it.isWildcard }
@@ -368,12 +393,7 @@ private fun wiringIn(file: ModuleFile): List<String> {
             .map { "$prefix is annotated with @$it" }
     val aliases =
         file.file.typeAliases.flatMap { alias ->
-            val target =
-                alias.text
-                    .substringAfter('=')
-                    .substringBefore('<')
-                    .trim()
-            resolve(target, explicitImports, starImports)
+            aliasTargets(alias, file)
                 .filter(::isWiring)
                 .map { "$prefix declares typealias ${alias.name}, which aliases $it" }
         }
@@ -405,6 +425,40 @@ private fun resolve(
         '.' in name -> listOf(name)
         else -> explicitImports.filter { it.substringAfterLast('.') == name } + starImports.map { "$it.$name" }
     }
+
+// An alias other packages can import would carry the adapter out of `.config` under a name no rule knows.
+private fun exportedAdapterAliases(
+    file: ModuleFile,
+    isAdapter: (String) -> Boolean,
+): List<String> =
+    file.file.typeAliases
+        .filterNot { it.hasPrivateModifier }
+        .flatMap { alias ->
+            aliasTargets(alias, file)
+                .filter(isAdapter)
+                .map {
+                    "ARCH-12 (ADR-GW-01-010): ${file.path} in ${file.module} declares typealias ${alias.name}, " +
+                        "which aliases $it"
+                }
+        }
+
+private fun aliasTargets(
+    alias: KoTypeAliasDeclaration,
+    file: ModuleFile,
+): List<String> {
+    val imports = file.file.imports.partition { it.isWildcard }
+    val target =
+        alias.text
+            .substringAfter('=')
+            .substringBefore('<')
+            .trim()
+    return resolve(target, imports.second.map { it.name }, imports.first.map { it.name })
+}
+
+private fun ModuleFile.isInAppWiringPackage(modules: List<Module>): Boolean {
+    val pkg = file.packagee?.name
+    return pkg != null && pkg.isInPackage("${modules.named(module)?.rootPackage}.config")
+}
 
 private fun isErrorHandling(name: String): Boolean = ERROR_HANDLING_TYPES.any { name.isInPackage(it) }
 

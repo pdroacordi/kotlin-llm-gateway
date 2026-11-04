@@ -23,7 +23,8 @@ Tests prove the code is correct in isolation; a smoke run proves the deployed pi
 4. **Scenarios:** run the ones the item touches, plus the baseline (auth, one completion, one stream):
    - Auth: missing or bad key gives 401 with the OpenAI error envelope.
    - Errors: an unknown route gives 404 with the OpenAI envelope and `x-request-id`; `x-client-request-id` is echoed.
-   - Completion: 200, body matches the OpenAI schema, `usage` present, response headers carry request ID and cost.
+   - Completion: 200, body matches the OpenAI schema, `usage` present, response headers carry request ID and cost; `x-gateway-deployment` present; the gateway's `x-request-id` is in the mock's journal as `x-client-request-id`; no prompt text in the gateway log.
+   - Upstream errors: a scenario on the mock gives the mapped row (`tools/smoke/chat-completions.sh`).
    - Stream: `curl -N` shows `data:` chunks then `data: [DONE]`; first byte before the mock's full latency (no buffering); with `perTokenMs` set, chunks arrive spread over the stream, not at once.
    - Rate limit: a burst over the team limit gives 429 with `retry-after` and the limit headers; the other team is unaffected.
    - Cache: the second identical request is a hit (header), with no call reaching the mock (`/__mock/stats` `lastSeq` unchanged); a different team misses.

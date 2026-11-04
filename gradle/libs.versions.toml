@@ -14,6 +14,7 @@ mockk = "1.14.11"
 # BlockHound publishes its versions with a .RELEASE suffix.
 blockhound = "1.0.18.RELEASE"
 testcontainers = "2.0.5"
+openai-java = "4.98.0"
 
 [libraries]
 kotlin-bom = { module = "org.jetbrains.kotlin:kotlin-bom", version.ref = "kotlin" }
@@ -27,6 +28,14 @@ spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-depe
 spring-boot-starter-webflux = { module = "org.springframework.boot:spring-boot-starter-webflux" }
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 spring-boot-starter-webflux-test = { module = "org.springframework.boot:spring-boot-starter-webflux-test" }
+# Versionless: Spring Boot's BOM manages them (gateway-providers applies it as a platform, spec GW-01).
+spring-webflux = { module = "org.springframework:spring-webflux" }
+spring-context = { module = "org.springframework:spring-context" }
+reactor-netty-http = { module = "io.projectreactor.netty:reactor-netty-http" }
+jackson-databind = { module = "tools.jackson.core:jackson-databind" }
+slf4j-api = { module = "org.slf4j:slf4j-api" }
+# The official SDK, in gateway-app's integrationTest only: a real parser and real exception classes (ADR-GW-01-009).
+openai-java = { module = "com.openai:openai-java", version.ref = "openai-java" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }

@@ -61,6 +61,17 @@ class RuleFixturesTest {
     }
 
     @Test
+    fun `ARCH-1 fails on a JSON library or a provider SDK in core`() {
+        val violations = coreImportsArePlainKotlin(fixture("arch-1-core-imports-json-library"))
+        assertFlags(violations, "ARCH-1", "JacksonInCore.kt", "imports tools.jackson.databind.JsonNode")
+        assertFlags(violations, "ARCH-1", "JacksonInCore.kt", "imports com.fasterxml.jackson.databind.ObjectMapper")
+        assertFlags(violations, "ARCH-1", "JacksonInCore.kt", "imports kotlinx.serialization.json.JsonElement")
+        assertFlags(violations, "ARCH-1", "JacksonInCore.kt", "imports com.openai.client.OpenAIClient")
+        assertFlags(violations, "ARCH-1", "JacksonInCore.kt", "imports com.anthropic.client.AnthropicClient")
+        assertFlags(violations, "ARCH-1", "JacksonInCore.kt", "references tools.jackson.databind.node.ObjectNode")
+    }
+
+    @Test
     fun `ARCH-2 fails on a core file importing the app`() {
         val violations = coreDoesNotImportOuterLayers(fixture("arch-2-core-imports-app"))
         assertFlags(violations, "ARCH-2", "ImportsApp.kt", "$BASE_PACKAGE.gateway.app.GatewayApplication")
@@ -283,6 +294,46 @@ class RuleFixturesTest {
     }
 
     @Test
+    fun `ARCH-12 fails on an adapter imported or written inline outside the app's config package`() {
+        val violations = adaptersReferencedOnlyFromWiring(fixture(ARCH_12))
+        val openAi = "$BASE_PACKAGE.gateway.providers.openai"
+        assertFlags(violations, "ARCH-12", "LeakyHandler.kt", "imports $openAi.OpenAiChatAdapter")
+        assertFlags(violations, "ARCH-12", "LeakyHandler.kt", "references $openAi.OpenAiAdapterConfig")
+    }
+
+    @Test
+    fun `ARCH-12 fails on a typealias of an adapter type that another package can import`() {
+        val violations = adaptersReferencedOnlyFromWiring(fixture(ARCH_12))
+        val openAi = "$BASE_PACKAGE.gateway.providers.openai"
+        assertFlags(
+            violations,
+            "ARCH-12",
+            "AdapterAlias.kt",
+            "typealias Adapter, which aliases $openAi.OpenAiChatAdapter",
+        )
+        assertFlags(
+            violations,
+            "ARCH-12",
+            "AdapterAlias.kt",
+            "typealias QualifiedConfig, which aliases $openAi.OpenAiAdapterConfig",
+        )
+    }
+
+    @Test
+    fun `ARCH-12 allows a private typealias in the config package`() {
+        val violations = adaptersReferencedOnlyFromWiring(fixture(ARCH_12))
+        assertTrue(violations.none { "LocalAdapter" in it }) { violations.toString() }
+    }
+
+    @Test
+    fun `ARCH-12 allows an adapter in the app's config package and the JSON conversion anywhere`() {
+        val violations = adaptersReferencedOnlyFromWiring(fixture(ARCH_12))
+        assertTrue(violations.none { "AllowedWiring.kt" in it || "AllowedJsonHelper.kt" in it }) {
+            violations.toString()
+        }
+    }
+
+    @Test
     fun `a package prefix matches itself`() {
         assertTrue("org.springframework".isInPackage("org.springframework"))
     }
@@ -328,6 +379,7 @@ class RuleFixturesTest {
         // Relative to the test task's working directory, the architecture-tests project directory.
         const val FIXTURES_DIR = "src/fixtures/kotlin"
         const val ARCH_10 = "arch-10-error-handling-outside-error-package"
+        const val ARCH_12 = "arch-12-adapter-outside-wiring"
         const val ARCH_9_TEST_SUPPORT = "arch-9-core-imports-test-support"
         const val ARCH_11_UNIT_TEST = "arch-11-testcontainers-in-unit-test"
     }

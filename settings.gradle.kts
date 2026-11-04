@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "kotlin-llm-gateway"
 
-include("gateway-core", "gateway-app", "mock-provider", "architecture-tests", "test-support")
+include("gateway-core", "gateway-providers", "gateway-app", "mock-provider", "architecture-tests", "test-support")

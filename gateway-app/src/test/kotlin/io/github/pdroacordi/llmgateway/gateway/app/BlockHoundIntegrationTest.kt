@@ -1,5 +1,6 @@
 package io.github.pdroacordi.llmgateway.gateway.app
 
+import io.github.pdroacordi.llmgateway.gateway.app.chat.FakeChatModelPort
 import io.github.pdroacordi.llmgateway.gateway.app.request.GatewayHeaders
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestIdGenerator
 import org.awaitility.Awaitility.await
@@ -17,6 +18,7 @@ import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.reactive.function.client.WebClient
 import reactor.blockhound.BlockingOperationError
@@ -36,7 +38,7 @@ import kotlin.uuid.Uuid
  * (ADR-FND-04-002).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Import(ProbeController::class, BlockHoundIntegrationTest.ThreadRecording::class)
+@Import(ProbeController::class, BlockHoundIntegrationTest.ThreadRecording::class, FakeChatModelPort.Wiring::class)
 @ExtendWith(OutputCaptureExtension::class)
 class BlockHoundIntegrationTest(
     @LocalServerPort port: Int,
@@ -119,6 +121,21 @@ class BlockHoundIntegrationTest(
     }
 
     @Test
+    fun `2000 chat completions over real sockets at concurrency 32 pass BlockHound, from the first request on`() {
+        val statuses =
+            Flux
+                .range(0, REQUESTS)
+                .flatMap({ chat() }, CONCURRENCY)
+                .map { it.statusCode.value() }
+                .collectList()
+                .block()
+                .orEmpty()
+
+        assertEquals(REQUESTS, statuses.size)
+        assertEquals(setOf(200), statuses.toSet())
+    }
+
+    @Test
     fun `100 000 draws from the production generator pass BlockHound on a non-blocking thread`() {
         val thread =
             Mono
@@ -130,6 +147,14 @@ class BlockHoundIntegrationTest(
 
         assertTrue(thread != null && Schedulers.isNonBlockingThread(thread)) { thread?.name.orEmpty() }
     }
+
+    private fun chat(): Mono<ResponseEntity<Void>> =
+        client
+            .post()
+            .uri("/v1/chat/completions")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""{"model":"mock-chat","messages":[{"role":"user","content":"Hi"}],"temperature":0.7}""")
+            .exchangeToMono { it.toBodilessEntity() }
 
     private fun get(path: String): Mono<ResponseEntity<Void>> =
         client

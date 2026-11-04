@@ -20,6 +20,8 @@ spring:
       shutdown-quiet-period: 0s
 
 server:
+  # Loopback, because the journal keeps prompts. The image sets SERVER_ADDRESS=0.0.0.0 (mock-provider/Dockerfile).
+  address: 127.0.0.1
   # CLAUDE.md, local ports.
   port: 8090
   # Graceful shutdown would wait out requests held by a `hang` fault (up to mock.max-hold).

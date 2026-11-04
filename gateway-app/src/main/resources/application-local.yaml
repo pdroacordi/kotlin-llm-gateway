@@ -1,0 +1,6 @@
+llmgw:
+  providers:
+    openai:
+      base-url: http://127.0.0.1:8090/v1
+      # A fixed fake, so a real OPENAI_API_KEY in the shell never reaches the mock.
+      api-key: mock-local-key

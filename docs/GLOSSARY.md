@@ -10,10 +10,12 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 | Budget | A spend limit for a team over a period. Soft: alert. Hard: reject or downgrade (RTE-04). | `Budget` |
 | Cache hit (exact) | A response served because a normalized request with the same key was stored before. | `CacheOutcome.EXACT_HIT` |
 | Cache hit (semantic) | A response served because a stored request is similar enough (above the threshold) in embedding space. | `CacheOutcome.SEMANTIC_HIT` |
-| Client request ID | A client's own correlation ID, sent in `x-client-request-id` (1 to 512 printable ASCII characters), echoed and logged; never used as the request ID. | `ClientRequestId` |
+| Chat call | One provider call with its request ID, deployment and request. | `ChatCall` |
 | Circuit breaker | Per-deployment switch that stops sending traffic after repeated failures and probes before closing again. | `DeploymentHealth` |
+| Client request ID | A client's own correlation ID, sent in `x-client-request-id` (1 to 512 printable ASCII characters), echoed and logged; never used as the request ID. | `ClientRequestId` |
 | Deployment | A concrete target a route can use: provider, provider model name, endpoint, credentials reference. | `Deployment` |
 | Error envelope | The OpenAI error body every gateway error uses: `{"error":{"message","type","param","code"}}`. Expected failures are `GatewayError` variants; one table maps each to status, `type` and `code`. | `GatewayError`, `ErrorReply` |
+| Extras | Members the gateway does not model, carried verbatim beside the typed fields at each level of a request or completion. | `extras`, `JsonValue` |
 | Fail-open / fail-closed | What a stage does when its own dependency fails: let the request through, or reject it. Declared per rule. | `FailureMode` |
 | Fallback chain | Ordered deployments tried for one request, only before the first byte reaches the client. | `FallbackChain` |
 | Guardrail | A rule applied to input or output, with a verdict: allow, redact or block. | `GuardrailRule`, `GuardrailVerdict` |
@@ -21,8 +23,10 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 | Local stack | The seven development services in `deploy/compose.yaml` (Postgres, Redis, Redpanda, OTel collector, Jaeger, Prometheus, Grafana) on loopback ports from `LLMGW_*_PORT`; project `llmgw` unless `COMPOSE_PROJECT_NAME` says otherwise. | `deploy/compose.yaml` |
 | Mock provider | The deterministic provider fake on port 8090 that every test and smoke run calls instead of a real provider; OpenAI and Anthropic shapes, scenarios and a request journal under `/__mock`. | `MockProviderApplication` |
 | Model alias | The model name a client sends (`chat-default`), resolved by the team's route table. | `ModelAlias` |
+| Model resolver | Maps the model a client sent to a deployment; pass-through to the one deployment until RTE-01. | `ModelResolver` |
 | Price catalog | Per-model prices for input, output and cached-input tokens, with effective dates. | `PriceCatalog` |
 | Provider | An upstream LLM API vendor (OpenAI, Anthropic, a local server). | `Provider` |
+| Provider failure | The sealed failures a provider call can end in, each one error row. | `ProviderFailure` |
 | Rate limit | A cap on requests or tokens per time window for a team. | `RateLimitPolicy` |
 | Request ID | The gateway-generated UUIDv7 for one call, returned in `x-request-id`; the key that ties a response, its log lines, its span and its ledger row. Never the trace ID. | `RequestId` |
 | Request journal | The mock provider's bounded, redacted log of the requests it received, with its arrival counter (`lastSeq`) and per-route, per-model counts; read over `/__mock/requests` and `/__mock/stats`. | `RequestJournal` |
@@ -37,6 +41,6 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 | Team | The tenant: owns keys, limits, budgets, routes and policies. Every request resolves to one. | `Team` |
 | Tool | A registered HTTP capability an agent can call, described by a JSON schema, on an allowlisted host. | `ToolDefinition` |
 | TTFT | Time to first token: from request receipt to the first streamed chunk sent. | `ttft` metric |
-| Usage | Provider-reported token counts (input, output, cached input), or an estimate flagged as such. | `Usage` |
+| Usage | Provider-reported token counts (input, output, cached input), or an estimate flagged as such; `estimated` when the provider omitted it. | `Usage` |
 | Usage event | The message emitted once per call with team, model, usage and cost, keyed by request ID. | `UsageEvent` |
 | Workflow | A declared orchestration of agents: sequential, parallel fan-out and fan-in, or supervisor. | `Workflow` |

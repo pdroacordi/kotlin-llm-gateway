@@ -10,9 +10,11 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
 import org.junit.jupiter.params.provider.ValueSource
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
-// One case per row of FND-04 section 4, "Implemented by FND-04".
+// One case per row of FND-04 section 4, "Implemented by FND-04", and of GW-01 section 4.
 class ErrorReplyTest {
     @ParameterizedTest(name = "{0}")
     @MethodSource("rows")
@@ -58,12 +60,77 @@ class ErrorReplyTest {
         assertEquals(status, GatewayError.RejectedRequest(status).toReply(REQUEST_ID).status)
     }
 
+    @Test
+    fun `retry-after rounds up to whole seconds and retry-after-ms keeps the milliseconds`() {
+        val reply = ProviderFailure.UpstreamRateLimited(1500.milliseconds).toReply(REQUEST_ID)
+
+        assertEquals(mapOf("retry-after" to "2", "retry-after-ms" to "1500"), reply.headers)
+    }
+
+    @Test
+    fun `a whole number of seconds is not rounded up`() {
+        val reply = ProviderFailure.ProviderUnavailable(7.seconds).toReply(REQUEST_ID)
+
+        assertEquals(mapOf("retry-after" to "7", "retry-after-ms" to "7000"), reply.headers)
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("failuresWithoutRetryAfter")
+    fun `no retry header is sent when the provider gave no wait`(failure: ProviderFailure) {
+        val headers = failure.toReply(REQUEST_ID).headers
+
+        assertTrue(headers.keys.none { it.startsWith("retry-after") }) { headers.toString() }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("serverSideFailures")
+    fun `a provider failure answered with a 5xx names the request ID at the end of its message`(
+        failure: ProviderFailure,
+    ) {
+        val reply = failure.toReply(REQUEST_ID)
+
+        assertTrue(reply.status >= 500) { reply.toString() }
+        assertTrue(reply.message.endsWith("Include the request ID $REQUEST_ID if you report it.")) { reply.message }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = [399, 401, 404, 429, 500])
+    fun `RejectedByProvider accepts only 400, 413 and 422`(status: Int) {
+        assertThrows<IllegalArgumentException> { ProviderFailure.RejectedByProvider(status, null, null) }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = [400, 413, 422])
+    fun `RejectedByProvider keeps the provider's status`(status: Int) {
+        val reply = ProviderFailure.RejectedByProvider(status, null, null).toReply(REQUEST_ID)
+
+        assertEquals(status, reply.status)
+        assertEquals("upstream_rejected_request", reply.code)
+    }
+
     companion object {
         private val REQUEST_ID = RequestId(Uuid.parse("01890a5d-ac96-774b-bcce-b302099a8057"))
         private const val INVALID = "invalid_request_error"
+        private const val SERVER = "server_error"
+        private const val REJECTED = "The provider rejected the request; see the code and param members."
+        private const val REPORT = "Include the request ID 01890a5d-ac96-774b-bcce-b302099a8057 if you report it."
 
         @JvmStatic
         fun rows(): List<Arguments> = ROWS
+
+        @JvmStatic
+        fun failuresWithoutRetryAfter(): List<ProviderFailure> =
+            listOf(ProviderFailure.UpstreamRateLimited(null), ProviderFailure.ProviderUnavailable(null))
+
+        @JvmStatic
+        fun serverSideFailures(): List<ProviderFailure> =
+            listOf(
+                ProviderFailure.UpstreamAuthFailed,
+                ProviderFailure.UpstreamQuotaExhausted,
+                ProviderFailure.ProviderUnavailable(null),
+                ProviderFailure.UpstreamTimeout,
+                ProviderFailure.UpstreamError,
+            )
 
         private val ROWS: List<Arguments> =
             listOf(
@@ -162,6 +229,142 @@ class ErrorReplyTest {
                         "server_error",
                         null,
                         "internal_error",
+                    ),
+                ),
+                Arguments.of(
+                    named("model not found", ProviderFailure.ModelNotFound),
+                    ErrorReply(
+                        404,
+                        "The requested model does not exist or is not available.",
+                        INVALID,
+                        "model",
+                        "model_not_found",
+                    ),
+                ),
+                Arguments.of(
+                    named(
+                        "rejected by the provider",
+                        ProviderFailure.RejectedByProvider(400, "context_length_exceeded", "messages[0].content"),
+                    ),
+                    ErrorReply(400, REJECTED, INVALID, "messages[0].content", "context_length_exceeded"),
+                ),
+                Arguments.of(
+                    named("rejected without a usable code", ProviderFailure.RejectedByProvider(422, null, null)),
+                    ErrorReply(422, REJECTED, INVALID, null, "upstream_rejected_request"),
+                ),
+                Arguments.of(
+                    named("upstream auth failed", ProviderFailure.UpstreamAuthFailed),
+                    ErrorReply(
+                        502,
+                        "The gateway could not authenticate with the provider. $REPORT",
+                        SERVER,
+                        null,
+                        "upstream_auth_failed",
+                        mapOf("x-should-retry" to "false"),
+                    ),
+                ),
+                Arguments.of(
+                    named("upstream quota exhausted", ProviderFailure.UpstreamQuotaExhausted),
+                    ErrorReply(
+                        503,
+                        "The gateway's provider account has no quota left. $REPORT",
+                        SERVER,
+                        null,
+                        "upstream_quota_exhausted",
+                        mapOf("x-should-retry" to "false"),
+                    ),
+                ),
+                Arguments.of(
+                    named("upstream rate limited", ProviderFailure.UpstreamRateLimited(7.seconds)),
+                    ErrorReply(
+                        429,
+                        "The provider is rate limiting the gateway; retry later.",
+                        "rate_limit_error",
+                        null,
+                        "upstream_rate_limited",
+                        mapOf("retry-after" to "7", "retry-after-ms" to "7000"),
+                    ),
+                ),
+                Arguments.of(
+                    named("provider unavailable", ProviderFailure.ProviderUnavailable(null)),
+                    ErrorReply(
+                        503,
+                        "The provider cannot be reached or is overloaded. $REPORT",
+                        SERVER,
+                        null,
+                        "provider_unavailable",
+                    ),
+                ),
+                Arguments.of(
+                    named("upstream timeout", ProviderFailure.UpstreamTimeout),
+                    ErrorReply(504, "The provider did not answer in time. $REPORT", SERVER, null, "upstream_timeout"),
+                ),
+                Arguments.of(
+                    named("upstream error", ProviderFailure.UpstreamError),
+                    ErrorReply(
+                        502,
+                        "The provider returned an error or an unreadable response. $REPORT",
+                        SERVER,
+                        null,
+                        "upstream_error",
+                    ),
+                ),
+                Arguments.of(
+                    named("model missing", GatewayError.InvalidRequest.modelRequired),
+                    ErrorReply(
+                        400,
+                        "'model' is required and must be a non-empty string.",
+                        INVALID,
+                        "model",
+                        "invalid_request",
+                    ),
+                ),
+                Arguments.of(
+                    named("messages missing", GatewayError.InvalidRequest.messagesRequired),
+                    ErrorReply(
+                        400,
+                        "'messages' is required and must be a non-empty array.",
+                        INVALID,
+                        "messages",
+                        "invalid_request",
+                    ),
+                ),
+                Arguments.of(
+                    named("message not an object", GatewayError.InvalidRequest.messageNotObject(2)),
+                    ErrorReply(400, "Each message must be a JSON object.", INVALID, "messages[2]", "invalid_request"),
+                ),
+                Arguments.of(
+                    named("role missing", GatewayError.InvalidRequest.roleRequired(0)),
+                    ErrorReply(
+                        400,
+                        "Each message needs a non-empty string 'role'.",
+                        INVALID,
+                        "messages[0].role",
+                        "invalid_request",
+                    ),
+                ),
+                Arguments.of(
+                    named("content mistyped", GatewayError.InvalidRequest.contentMistyped(1)),
+                    ErrorReply(
+                        400,
+                        "'content' must be a string, an array or null.",
+                        INVALID,
+                        "messages[1].content",
+                        "invalid_request",
+                    ),
+                ),
+                Arguments.of(
+                    named("stream mistyped", GatewayError.InvalidRequest.streamMistyped),
+                    ErrorReply(400, "'stream' must be a boolean.", INVALID, "stream", "invalid_request"),
+                ),
+                Arguments.of(
+                    named("stream unavailable", GatewayError.InvalidRequest.streamingUnavailable),
+                    ErrorReply(
+                        400,
+                        "Streaming is not available yet; send stream false or omit it.",
+                        INVALID,
+                        "stream",
+                        "unsupported_value",
                     ),
                 ),
             )

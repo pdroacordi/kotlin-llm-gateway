@@ -1,6 +1,10 @@
 spring:
   application:
     name: gateway-app
+  http:
+    codecs:
+      # The request body limit (ADR-GW-01-008).
+      max-in-memory-size: 10MB
   web:
     resources:
       # The gateway serves no static files; otherwise an unknown path is probed as a classpath resource before
@@ -12,8 +16,33 @@ spring:
       enabled: false
 
 server:
+  # Loopback until GW-04 authenticates callers (ADR-GW-01-007).
+  address: ${LLMGW_BIND_ADDRESS:127.0.0.1}
   # CLAUDE.md, local ports.
   port: 8080
+
+llmgw:
+  security:
+    # Removed by GW-04.
+    allow-unauthenticated-exposure: false
+  providers:
+    openai:
+      base-url: https://api.openai.com/v1
+      # From the environment only (ADR-GW-01-012).
+      api-key: ${OPENAI_API_KEY:}
+      connect-timeout: 5s
+      # The whole call: a non-stream completion sends nothing until it is done.
+      request-timeout: 300s
+      # 1KB to 256MB. WebClient's default of 256 KB is too small for n > 1, logprobs or audio.
+      max-response-size: 16MB
+      pool:
+        # A non-stream call holds one for its whole duration.
+        max-connections: 500
+        pending-acquire-timeout: 5s
+        # At most the server's, or a request meets a connection the server closed.
+        max-idle-time: 30s
+        # Picks up DNS changes.
+        max-life-time: 5m
 
 logging:
   pattern:

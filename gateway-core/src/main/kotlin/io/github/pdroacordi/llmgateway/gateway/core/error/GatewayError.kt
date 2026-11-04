@@ -1,5 +1,7 @@
 package io.github.pdroacordi.llmgateway.gateway.core.error
 
+import kotlin.time.Duration
+
 /**
  * Expected failures, each mapped to one OpenAI error row by [toReply]. Later items add their variant and row
  * (FND-04 section 4, "Reserved for later items").
@@ -26,6 +28,42 @@ sealed interface GatewayError {
                 InvalidRequest(
                     "The x-client-request-id header must be one value of 1 to 512 printable ASCII characters.",
                     ErrorCodes.INVALID_CLIENT_REQUEST_ID,
+                )
+            val modelRequired =
+                InvalidRequest(
+                    "'model' is required and must be a non-empty string.",
+                    ErrorCodes.INVALID_REQUEST,
+                    "model",
+                )
+            val messagesRequired =
+                InvalidRequest(
+                    "'messages' is required and must be a non-empty array.",
+                    ErrorCodes.INVALID_REQUEST,
+                    "messages",
+                )
+            val streamMistyped = InvalidRequest("'stream' must be a boolean.", ErrorCodes.INVALID_REQUEST, "stream")
+            val streamingUnavailable =
+                InvalidRequest(
+                    "Streaming is not available yet; send stream false or omit it.",
+                    ErrorCodes.UNSUPPORTED_VALUE,
+                    "stream",
+                )
+
+            fun messageNotObject(index: Int): InvalidRequest =
+                InvalidRequest("Each message must be a JSON object.", ErrorCodes.INVALID_REQUEST, "messages[$index]")
+
+            fun roleRequired(index: Int): InvalidRequest =
+                InvalidRequest(
+                    "Each message needs a non-empty string 'role'.",
+                    ErrorCodes.INVALID_REQUEST,
+                    "messages[$index].role",
+                )
+
+            fun contentMistyped(index: Int): InvalidRequest =
+                InvalidRequest(
+                    "'content' must be a string, an array or null.",
+                    ErrorCodes.INVALID_REQUEST,
+                    "messages[$index].content",
                 )
         }
     }
@@ -58,4 +96,36 @@ sealed interface GatewayError {
 
     /** Bugs, non-gateway 5xx and anything untranslated. */
     data object Internal : GatewayError
+}
+
+/** What a provider call can fail with. RTE-02 decides on these; [toReply] renders them (GW-01 section 4). */
+sealed interface ProviderFailure : GatewayError {
+    data object ModelNotFound : ProviderFailure
+
+    /** [code] and [param] are the provider's, already checked to hold no free text. */
+    data class RejectedByProvider(
+        val status: Int,
+        val code: String?,
+        val param: String?,
+    ) : ProviderFailure {
+        init {
+            require(status in HttpStatuses.RELAYED_REJECTIONS) { "A provider rejection is 400, 413 or 422: $status" }
+        }
+    }
+
+    data object UpstreamAuthFailed : ProviderFailure
+
+    data class UpstreamRateLimited(
+        val retryAfter: Duration?,
+    ) : ProviderFailure
+
+    data object UpstreamQuotaExhausted : ProviderFailure
+
+    data class ProviderUnavailable(
+        val retryAfter: Duration?,
+    ) : ProviderFailure
+
+    data object UpstreamTimeout : ProviderFailure
+
+    data object UpstreamError : ProviderFailure
 }

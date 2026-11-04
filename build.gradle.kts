@@ -5,6 +5,7 @@ plugins {
 // Every module with production code is listed here (ADR-014 checklist).
 dependencies {
     kover(project(":gateway-core"))
+    kover(project(":gateway-providers"))
     kover(project(":gateway-app"))
     kover(project(":mock-provider"))
 }

@@ -424,6 +424,40 @@ ADR-016 promised Testcontainers fixtures for every module's `integrationTest` su
 - Image versions shared with `deploy/compose.yaml` are kept equal by `StackContractTest`.
 - 2026-11-03 (FND-02 review): ARCH-11 also forbids `org.testcontainers` in core modules' `integrationTest` sources (every core source set; core tests are plain JUnit). Because Konsist reads no `.kts`, the build adds `checkTestSupportClasspath` (in `llmgw.kotlin-jvm`, part of `check`): it fails when `:test-support` or `org.testcontainers` resolves on a `main` or `test` classpath of any module but test-support.
 
+---
+
+<a id="adr-018"></a>
+## ADR-018: Chat domain model and JSON handling
+
+- **Status:** Accepted
+- **Date:** 2026-11-03
+
+### Context
+GW-02, GW-03, GW-05, GW-06, RL-02, CACHE-01, GRD-02 and COST-02 all work on the same request and response. ADR-004 promises that unknown fields pass through; CLAUDE.md keeps core plain Kotlin and provider types behind the port; FND-04 left the JSON library to GW-01. The OpenAI request has 37 members and grows, while the gateway reads few of them.
+
+### Options
+Full options and reasoning in [GW-01](specs/GW-01-chat-completions.md), ADR-GW-01-001 and -002. In short:
+- Model: every member typed in core; an opaque body; typed members for what the gateway reads plus neutral extras.
+- JSON: Jackson 3 data binding with its Kotlin module; kotlinx.serialization; Jackson 3 tree model at the edges.
+
+### Decision
+- **Model:**
+  - A domain type has typed fields only for what the gateway itself reads, and `extras: JsonValue.Object` for the rest, at each level (request, message, content part, completion, choice, assistant message, usage).
+  - `JsonValue` is a sealed type in `gateway-core`; numbers keep their JSON text. Extras are the gateway API's members, which ADR-004 makes the OpenAI shape; they are not an adapter's wire type.
+  - A member moves from `extras` to a typed field when an item must read it.
+  - Core types that carry prompt or completion text override `toString`.
+- **JSON:**
+  - Jackson 3, through Boot's `JsonMapper`, tree model only, at the HTTP edge and in adapters. No `jackson-module-kotlin`, no kotlinx.serialization.
+  - `gateway-core` knows neither library (ARCH-1, `checkCoreClasspath`).
+  - The conversion `JsonNode` to and from `JsonValue` lives in `.gateway.providers.json`.
+
+### Consequences
+- A new OpenAI member passes through with no code change.
+- An adapter for a provider that cannot take a member declares what it does with it (GW-03).
+- CACHE-01's key covers `extras`. GRD-02 states what it does with text inside `extras`.
+- The error envelope and its codec path are unchanged.
+- Readers and writers are explicit code, unit-tested without Spring; no reflection runs on the hot path.
+
 <!--
 Template for a new ADR (copy above this comment):
 

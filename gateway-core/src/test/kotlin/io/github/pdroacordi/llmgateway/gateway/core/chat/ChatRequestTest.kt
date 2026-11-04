@@ -20,7 +20,7 @@ class ChatRequestTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = ["model", "messages", "stream"])
+    @ValueSource(strings = ["model", "messages", "stream", "stream_options"])
     fun `a typed member cannot also sit in extras`(key: String) {
         val extras = JsonValue.Object(mapOf(key to JsonValue.Null))
 

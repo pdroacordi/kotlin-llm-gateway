@@ -45,6 +45,14 @@ fun JsonNode.toJsonValue(): JsonValue =
         else -> error("A $nodeType node is not JSON a body can hold.")
     }
 
+/** Every member but [typed], in order, verbatim (ADR-018). */
+fun JsonNode.extrasExcept(typed: Set<String>): JsonValue.Object =
+    JsonValue.Object(
+        properties()
+            .filterNot { (name, _) -> name in typed }
+            .associate { (name, value) -> name to value.toJsonValue() },
+    )
+
 fun JsonValue.toJsonNode(nodes: JsonNodeFactory): JsonNode =
     when (this) {
         JsonValue.Null -> {

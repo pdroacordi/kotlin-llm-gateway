@@ -2,6 +2,10 @@ package io.github.pdroacordi.llmgateway.gateway.core.chat
 
 import io.github.pdroacordi.llmgateway.gateway.core.error.GatewayError
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.isActive
 
 sealed interface ChatOutcome {
     data class Answered(
@@ -37,4 +41,25 @@ class ChatCompletionService(
             }
         }
     }
+
+    /** Cold. [onEnd] must not suspend: it can run in a cancelled coroutine. */
+    fun stream(
+        requestId: RequestId,
+        request: ChatRequest,
+        onEnd: (StreamSummary) -> Unit = {},
+    ): Flow<ChatStreamEvent> =
+        flow {
+            val deployment = resolver.resolve(request.model)
+            val tally = StreamTally(request, deployment, estimator)
+            try {
+                port.stream(ChatCall(requestId, deployment, request)).collect { event ->
+                    tally.on(event).forEach { emit(it) }
+                }
+                // Otherwise the response would be an empty 200: no event ever reaches the frames.
+                check(tally.ended) { "The port ended a stream with no terminal event." }
+            } finally {
+                // Recorded, never caught: a cancellation propagates unchanged.
+                onEnd(tally.summary(cancelled = !currentCoroutineContext().isActive))
+            }
+        }
 }

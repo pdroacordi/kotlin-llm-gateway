@@ -7,6 +7,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -26,6 +27,8 @@ class ChatCompletionServiceTest {
             calls += call
             return answer(call)
         }
+
+        override fun stream(call: ChatCall): Flow<ProviderStreamEvent> = error("not used by a completion")
     }
 
     private fun service(port: ChatModelPort): ChatCompletionService =

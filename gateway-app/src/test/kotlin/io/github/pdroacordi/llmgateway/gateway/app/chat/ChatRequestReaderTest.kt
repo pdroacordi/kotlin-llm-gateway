@@ -83,6 +83,14 @@ class ChatRequestReaderTest {
         assertEquals(JsonValue.Number("1.10"), extras["d"])
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = ["""{"include_usage":null}""", """{"include_usage":null,"x":1}""", "{}"])
+    fun `a null or absent include_usage reads as false, as section 4 says null means absent`(options: String) {
+        val request = read("""{"model":"m","messages":[{"role":"user"}],"stream":true,"stream_options":$options}""")
+
+        assertEquals(false, request.streamOptions?.includeUsage)
+    }
+
     @Test
     fun `absent and null content read the same, so both go upstream as a null member`() {
         val absent = read("""{"model":"m","messages":[{"role":"tool","tool_call_id":"c1"}]}""").messages.single()
@@ -180,7 +188,6 @@ class ChatRequestReaderTest {
                 case("""{"model":"m","messages":[{"role":"user","content":{}}]}""", errors.contentMistyped(0)),
                 case("""{"model":"m","messages":[$USER],"stream":"yes"}""", errors.streamMistyped),
                 case("""{"model":"m","messages":[$USER],"stream":1}""", errors.streamMistyped),
-                case("""{"model":"m","messages":[$USER],"stream":true}""", errors.streamingUnavailable),
                 // The first row that fails answers, across messages too (GW-01 section 4).
                 case("""{"model":5,"messages":[]}""", errors.modelRequired),
                 case("""{"model":"m","messages":[{},5]}""", errors.messageNotObject(1)),
@@ -188,6 +195,26 @@ class ChatRequestReaderTest {
                 case(
                     """{"model":"m","messages":[{"role":"u","content":5}],"stream":true}""",
                     errors.contentMistyped(0),
+                ),
+                case(
+                    """{"model":"m","messages":[$USER],"stream":true,"stream_options":5}""",
+                    errors.streamOptionsMistyped,
+                ),
+                case(
+                    """{"model":"m","messages":[$USER],"stream":true,"stream_options":{"include_usage":"yes"}}""",
+                    errors.includeUsageMistyped,
+                ),
+                case("""{"model":"m","messages":[$USER],"stream_options":{}}""", errors.streamOptionsNeedStream),
+                case(
+                    """{"model":"m","messages":[$USER],"stream":false,"stream_options":{}}""",
+                    errors.streamOptionsNeedStream,
+                ),
+                // The order of GW-02 section 4.
+                case("""{"model":"m","messages":[$USER],"stream":"yes","stream_options":5}""", errors.streamMistyped),
+                case("""{"model":"m","messages":[$USER],"stream_options":5}""", errors.streamOptionsMistyped),
+                case(
+                    """{"model":"m","messages":[$USER],"stream_options":{"include_usage":1}}""",
+                    errors.includeUsageMistyped,
                 ),
             )
         }

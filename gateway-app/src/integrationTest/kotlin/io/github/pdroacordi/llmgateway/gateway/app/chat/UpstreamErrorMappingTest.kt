@@ -52,9 +52,9 @@ private val QUOTA_EXHAUSTED =
         "The gateway's provider account has no quota left. $REPORT",
         headers = NO_RETRY,
     )
-private val UNAVAILABLE =
+val UNAVAILABLE =
     ExpectedReply(503, SERVER, "provider_unavailable", "The provider cannot be reached or is overloaded. $REPORT")
-private val TIMED_OUT = ExpectedReply(504, SERVER, "upstream_timeout", "The provider did not answer in time. $REPORT")
+val TIMED_OUT = ExpectedReply(504, SERVER, "upstream_timeout", "The provider did not answer in time. $REPORT")
 private val UNREADABLE =
     ExpectedReply(502, SERVER, "upstream_error", "The provider returned an error or an unreadable response. $REPORT")
 
@@ -64,7 +64,7 @@ private fun rejected(
     param: String? = null,
 ) = ExpectedReply(status, INVALID, code, REJECTED, param)
 
-private fun assertReply(
+fun assertReply(
     result: EntityExchangeResult<String>,
     expected: ExpectedReply,
 ) {
@@ -84,8 +84,7 @@ private fun assertReply(
     if ("x-should-retry" !in expected.headers) assertNull(result.responseHeaders.getFirst("x-should-retry"))
 }
 
-private fun WebTestClient.ResponseSpec.result(): EntityExchangeResult<String> =
-    expectBody(String::class.java).returnResult()
+fun WebTestClient.ResponseSpec.result(): EntityExchangeResult<String> = expectBody(String::class.java).returnResult()
 
 class UpstreamErrorMappingTest : MockBackedTest() {
     class Row(

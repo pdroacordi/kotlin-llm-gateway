@@ -358,13 +358,33 @@ class ErrorReplyTest {
                     ErrorReply(400, "'stream' must be a boolean.", INVALID, "stream", "invalid_request"),
                 ),
                 Arguments.of(
-                    named("stream unavailable", GatewayError.InvalidRequest.streamingUnavailable),
+                    named("stream_options mistyped", GatewayError.InvalidRequest.streamOptionsMistyped),
                     ErrorReply(
                         400,
-                        "Streaming is not available yet; send stream false or omit it.",
+                        "'stream_options' must be an object.",
                         INVALID,
-                        "stream",
-                        "unsupported_value",
+                        "stream_options",
+                        "invalid_request",
+                    ),
+                ),
+                Arguments.of(
+                    named("include_usage mistyped", GatewayError.InvalidRequest.includeUsageMistyped),
+                    ErrorReply(
+                        400,
+                        "'include_usage' must be a boolean.",
+                        INVALID,
+                        "stream_options.include_usage",
+                        "invalid_request",
+                    ),
+                ),
+                Arguments.of(
+                    named("stream_options without stream", GatewayError.InvalidRequest.streamOptionsNeedStream),
+                    ErrorReply(
+                        400,
+                        "'stream_options' is only allowed when 'stream' is true.",
+                        INVALID,
+                        "stream_options",
+                        "invalid_request",
                     ),
                 ),
             )

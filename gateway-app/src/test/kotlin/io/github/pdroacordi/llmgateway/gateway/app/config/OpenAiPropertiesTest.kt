@@ -31,6 +31,13 @@ class OpenAiPropertiesTest {
                     maxIdleTime = Duration.ofSeconds(30),
                     maxLifeTime = Duration.ofMinutes(5),
                 ),
+            stream =
+                OpenAiProperties.Stream(
+                    firstByteTimeout = Duration.ofSeconds(120),
+                    idleTimeout = Duration.ofSeconds(60),
+                    totalTimeout = Duration.ofMinutes(30),
+                    maxEventSize = DataSize.ofMegabytes(1),
+                ),
         )
 
     private fun message(properties: OpenAiProperties): String =
@@ -52,6 +59,10 @@ class OpenAiPropertiesTest {
                     "llmgw.providers.openai.pool.pending-acquire-timeout" to "5s",
                     "llmgw.providers.openai.pool.max-idle-time" to "30s",
                     "llmgw.providers.openai.pool.max-life-time" to "5m",
+                    "llmgw.providers.openai.stream.first-byte-timeout" to "120s",
+                    "llmgw.providers.openai.stream.idle-timeout" to "60s",
+                    "llmgw.providers.openai.stream.total-timeout" to "30m",
+                    "llmgw.providers.openai.stream.max-event-size" to "1MB",
                 ),
             ),
         )
@@ -63,6 +74,62 @@ class OpenAiPropertiesTest {
         assertEquals("sk-canary-key", bound.apiKey.reveal())
         assertEquals(DataSize.ofMegabytes(16), bound.maxResponseSize)
         assertEquals(500, bound.pool.maxConnections)
+        assertEquals(Duration.ofMinutes(30), bound.stream.totalTimeout)
+        assertEquals(DataSize.ofMegabytes(1), bound.stream.maxEventSize)
+    }
+
+    @Test
+    fun `the stream values reach the adapter's config`() {
+        val stream = valid.toAdapterConfig().stream
+
+        assertEquals(Duration.ofSeconds(120), stream.firstByteTimeout)
+        assertEquals(Duration.ofSeconds(60), stream.idleTimeout)
+        assertEquals(Duration.ofMinutes(30), stream.totalTimeout)
+        assertEquals(1024 * 1024, stream.maxEventBytes)
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["first-byte-timeout", "idle-timeout", "total-timeout"])
+    fun `a stream deadline that is not positive is refused, naming the property`(name: String) {
+        val stream =
+            when (name) {
+                "first-byte-timeout" -> valid.stream.copy(firstByteTimeout = Duration.ZERO)
+                "idle-timeout" -> valid.stream.copy(idleTimeout = Duration.ZERO)
+                else -> valid.stream.copy(totalTimeout = Duration.ofSeconds(-1))
+            }
+
+        assertEquals("llmgw.providers.openai.stream.$name must be positive.", message(valid.copy(stream = stream)))
+    }
+
+    @Test
+    fun `a first-byte or idle deadline above the total is refused`() {
+        val total = Duration.ofSeconds(10)
+        val first =
+            valid.stream.copy(
+                firstByteTimeout = Duration.ofSeconds(11),
+                idleTimeout = total,
+                totalTimeout = total,
+            )
+        val idle =
+            valid.stream.copy(
+                firstByteTimeout = total,
+                idleTimeout = Duration.ofSeconds(11),
+                totalTimeout = total,
+            )
+
+        assertTrue("first-byte-timeout" in message(valid.copy(stream = first)))
+        assertTrue("idle-timeout" in message(valid.copy(stream = idle)))
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = [1023, 16 * 1024 * 1024 + 1])
+    fun `an event size outside 1KB to 16MB is refused`(bytes: Long) {
+        val stream = valid.stream.copy(maxEventSize = DataSize.ofBytes(bytes))
+
+        assertEquals(
+            "llmgw.providers.openai.stream.max-event-size must be 1KB to 16MB.",
+            message(valid.copy(stream = stream)),
+        )
     }
 
     @Test

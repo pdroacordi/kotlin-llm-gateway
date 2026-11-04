@@ -184,6 +184,17 @@ class OpenAiFailureClassifierTest {
         assertNull(fields.type)
     }
 
+    @ParameterizedTest
+    @MethodSource("inBandRows")
+    fun `an in-band error maps by code and type`(
+        code: String?,
+        type: String?,
+        param: String?,
+        expected: ProviderFailure,
+    ) {
+        assertEquals(expected, classifier.classifyInBand(ProviderErrorFields(code, type, param)))
+    }
+
     companion object {
         private const val CANARY = "canary-provider-message org-canary"
         private val NOW: Instant = Instant.parse("2026-11-03T12:00:00Z")
@@ -192,6 +203,32 @@ class OpenAiFailureClassifierTest {
             code: String,
             type: String = "x",
         ): String = """{"error":{"message":"$CANARY","type":"$type","param":null,"code":"$code"}}"""
+
+        @JvmStatic
+        fun inBandRows(): List<Arguments> =
+            listOf(
+                inBand("insufficient_quota", "x", null, ProviderFailure.UpstreamQuotaExhausted),
+                inBand("x", "insufficient_quota", null, ProviderFailure.UpstreamQuotaExhausted),
+                inBand("model_not_found", "invalid_request_error", null, ProviderFailure.ModelNotFound),
+                inBand(null, "rate_limit_error", null, ProviderFailure.UpstreamRateLimited(null)),
+                inBand("rate_limit_exceeded", "x", null, ProviderFailure.UpstreamRateLimited(null)),
+                inBand(
+                    "bad_value",
+                    "invalid_request_error",
+                    "seed",
+                    ProviderFailure.RejectedByProvider(400, "bad_value", "seed"),
+                ),
+                inBand(null, "invalid_request_error", null, ProviderFailure.RejectedByProvider(400, null, null)),
+                inBand("server_overloaded", "server_error", null, ProviderFailure.UpstreamError),
+                inBand(null, null, null, ProviderFailure.UpstreamError),
+            )
+
+        private fun inBand(
+            code: String?,
+            type: String?,
+            param: String?,
+            expected: ProviderFailure,
+        ): Arguments = Arguments.of(code, type, param, expected)
 
         @JvmStatic
         fun rows(): List<Arguments> =

@@ -3,9 +3,11 @@ package io.github.pdroacordi.llmgateway.gateway.providers.openai
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatCall
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatModelPort
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ProviderResult
+import io.github.pdroacordi.llmgateway.gateway.core.chat.ProviderStreamEvent
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.github.pdroacordi.llmgateway.gateway.providers.json.exactTreeReader
 import io.netty.channel.ChannelOption
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.reactor.awaitSingle
 import org.slf4j.LoggerFactory
 import org.springframework.core.codec.DecodingException
@@ -27,9 +29,27 @@ import java.time.Clock
 import java.time.Duration
 import java.util.concurrent.TimeoutException
 
+internal const val CLIENT_REQUEST_ID = "X-Client-Request-Id"
+private const val REQUEST_ID = "x-request-id"
+private val PROVIDER_REQUEST_ID = Regex("""[A-Za-z0-9_.-]{1,128}""")
+
+// A header from outside: only a value that looks like an ID reaches the log.
+internal fun providerRequestId(headers: HttpHeaders): String? =
+    headers.getFirst(REQUEST_ID)?.takeIf { PROVIDER_REQUEST_ID.matches(it) }
+
+// The body is read as bytes whatever the type says, and reading it would parse a value a proxy may have mangled:
+// InvalidMediaTypeException is no transport failure, and would throw a paid answer away.
+internal fun withoutContentType(response: ClientResponse): ClientResponse =
+    response
+        .mutate()
+        .headers { it.remove(HttpHeaders.CONTENT_TYPE) }
+        .body { it.bodyFailuresAsTransport() }
+        .build()
+
 /**
  * The OpenAI side of [ChatModelPort]: one POST whose status, headers and bytes go to pure functions
- * (docs/knowledge/patterns/upstream-bytes-then-pure-classification.md). No retries: RTE-02 owns them.
+ * (docs/knowledge/patterns/upstream-bytes-then-pure-classification.md), for a stream chunk by chunk. No retries:
+ * RTE-02 owns them.
  */
 class OpenAiChatAdapter(
     private val config: OpenAiAdapterConfig,
@@ -69,6 +89,8 @@ class OpenAiChatAdapter(
             .codecs { it.defaultCodecs().maxInMemorySize(config.maxResponseBytes) }
             .build()
 
+    private val streams = OpenAiChatStream(client, endpoint, config, mapper, clock)
+
     /** Startup only; blocks. The first request would otherwise load these on an event loop. */
     fun warmUp() {
         // docs/knowledge/gotchas/kotlinx-reactive-await-loads-context-injectors-on-first-use.md
@@ -95,6 +117,8 @@ class OpenAiChatAdapter(
             is Exchange.Broken -> transportFailure(call, exchange.failure, started)
         }
     }
+
+    override fun stream(call: ChatCall): Flow<ProviderStreamEvent> = streams.stream(call)
 
     // Named types only: a CancellationException passes through, and an unknown exception is a bug (GW-01 section 5).
     private suspend fun exchange(call: ChatCall): Exchange =
@@ -130,11 +154,6 @@ class OpenAiChatAdapter(
             .awaitSingle()
     }
 
-    // The body is read as bytes whatever the type says, and reading it would parse a value a proxy may have mangled:
-    // InvalidMediaTypeException is no transport failure, and would throw a paid answer away.
-    private fun withoutContentType(response: ClientResponse): ClientResponse =
-        response.mutate().headers { it.remove(HttpHeaders.CONTENT_TYPE) }.build()
-
     private fun interpret(
         call: ChatCall,
         response: ResponseEntity<ByteArray>,
@@ -167,7 +186,7 @@ class OpenAiChatAdapter(
         log.warn(
             "Provider call failed: deployment={} exception={} durationMs={}",
             call.deployment.id.value,
-            cause.javaClass.name,
+            cause.sourceName(),
             clock.millis() - started,
         )
         return ProviderResult.Failed(failure)
@@ -209,10 +228,6 @@ class OpenAiChatAdapter(
         )
     }
 
-    // A header from outside: only a value that looks like an ID reaches the log.
-    private fun providerRequestId(headers: HttpHeaders): String? =
-        headers.getFirst(REQUEST_ID)?.takeIf { PROVIDER_REQUEST_ID.matches(it) }
-
     override fun close() {
         connections.dispose()
     }
@@ -233,13 +248,10 @@ class OpenAiChatAdapter(
 
         // Reactor Netty's default for a custom pool.
         const val PENDING_PER_CONNECTION = 2
-        const val REQUEST_ID = "x-request-id"
-        const val CLIENT_REQUEST_ID = "X-Client-Request-Id"
         const val EMPTY_OBJECT = "{}"
         val EMPTY_BODY = ByteArray(0)
         val EVICTION_INTERVAL: Duration = Duration.ofSeconds(30)
         val WARM_UP_TIMEOUT: Duration = Duration.ofSeconds(30)
-        val PROVIDER_REQUEST_ID = Regex("""[A-Za-z0-9_.-]{1,128}""")
         private val log = LoggerFactory.getLogger(OpenAiChatAdapter::class.java)
     }
 }

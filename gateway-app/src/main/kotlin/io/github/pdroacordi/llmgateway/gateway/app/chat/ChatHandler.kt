@@ -1,33 +1,65 @@
 package io.github.pdroacordi.llmgateway.gateway.app.chat
 
 import io.github.pdroacordi.llmgateway.gateway.app.error.GatewayErrorException
+import io.github.pdroacordi.llmgateway.gateway.app.error.StreamErrorFrames
 import io.github.pdroacordi.llmgateway.gateway.app.request.GatewayHeaders
 import io.github.pdroacordi.llmgateway.gateway.app.request.RequestContext
+import io.github.pdroacordi.llmgateway.gateway.app.web.SseBodyInserter
 import io.github.pdroacordi.llmgateway.gateway.app.web.readJsonObject
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatCompletionService
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatOutcome
+import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatRequest
 import io.github.pdroacordi.llmgateway.gateway.providers.json.exactTreeReader
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.reactor.awaitSingle
 import org.springframework.http.MediaType
 import org.springframework.web.reactive.function.server.ServerRequest
 import org.springframework.web.reactive.function.server.ServerResponse
 import org.springframework.web.reactive.function.server.bodyValueAndAwait
 import tools.jackson.databind.json.JsonMapper
+import java.time.Clock
 
-/** `POST /v1/chat/completions`, non-streaming until GW-02. */
+/** `POST /v1/chat/completions`; `stream` selects the port method. */
 class ChatHandler(
     private val service: ChatCompletionService,
     private val mapper: JsonMapper,
+    private val clock: Clock,
 ) {
     private val trees = mapper.exactTreeReader()
+    private val streamErrors = StreamErrorFrames(mapper)
 
     suspend fun complete(request: ServerRequest): ServerResponse {
-        val chat = ChatRequestReader.read(request.readJsonObject(trees))
+        val body = request.readJsonObject(trees)
+        val chat = ChatRequestReader.read(body)
         val context = checkNotNull(currentCoroutineContext()[RequestContext]) { "no RequestContext on a chat request" }
-        return when (val outcome = service.complete(context.requestId, chat)) {
+        return if (ChatRequestReader.wantsStream(body)) stream(context, chat) else answer(context, chat)
+    }
+
+    private suspend fun answer(
+        context: RequestContext,
+        chat: ChatRequest,
+    ): ServerResponse =
+        when (val outcome = service.complete(context.requestId, chat)) {
             is ChatOutcome.Answered -> ok(outcome)
             is ChatOutcome.Rejected -> throw GatewayErrorException(outcome.error)
         }
+
+    // Cold: the provider call starts when the response body is subscribed, after this returns.
+    private suspend fun stream(
+        context: RequestContext,
+        chat: ChatRequest,
+    ): ServerResponse {
+        val log = ChatStreamLog(clock, context.requestId)
+        val events = service.stream(context.requestId, chat, log::end)
+        val includeUsage = chat.streamOptions?.includeUsage == true
+        // Without the Job, so asFlux's coroutine does not join a handler that returns before the body is written.
+        val coroutine = currentCoroutineContext().minusKey(Job)
+        val inserter =
+            SseBodyInserter(coroutine) { headers ->
+                ChatStreamFrames(mapper, streamErrors, context.requestId, includeUsage, headers, log).frames(events)
+            }
+        return ServerResponse.ok().body(inserter).awaitSingle()
     }
 
     private suspend fun ok(outcome: ChatOutcome.Answered): ServerResponse {

@@ -340,7 +340,10 @@ class ChatRouteTest(
                 Arguments.of("""{"model":"m","messages":[{}]}""", errors.roleRequired(0)),
                 Arguments.of("""{"model":"m","messages":[{"role":"user","content":5}]}""", errors.contentMistyped(0)),
                 Arguments.of("""{"model":"m","messages":[$USER],"stream":"yes"}""", errors.streamMistyped),
-                Arguments.of("""{"model":"m","messages":[$USER],"stream":true}""", errors.streamingUnavailable),
+                Arguments.of(
+                    """{"model":"m","messages":[$USER],"stream_options":{}}""",
+                    errors.streamOptionsNeedStream,
+                ),
             )
         }
 

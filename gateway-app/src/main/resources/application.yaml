@@ -22,6 +22,10 @@ server:
   port: 8080
 
 llmgw:
+  server:
+    # How long a client's socket may take none of the bytes pending for it, on every response: a stall, not a slow
+    # reader. Below stream.idle-timeout, so a stalled client is seen as a client (ADR-GW-02-009).
+    client-write-timeout: 30s
   security:
     # Removed by GW-04.
     allow-unauthenticated-exposure: false
@@ -31,18 +35,29 @@ llmgw:
       # From the environment only (ADR-GW-01-012).
       api-key: ${OPENAI_API_KEY:}
       connect-timeout: 5s
-      # The whole call: a non-stream completion sends nothing until it is done.
+      # Non-stream only, the whole call: a completion sends nothing until it is done.
       request-timeout: 300s
       # 1KB to 256MB. WebClient's default of 256 KB is too small for n > 1, logprobs or audio.
       max-response-size: 16MB
       pool:
-        # A non-stream call holds one for its whole duration.
+        # A call holds one for its whole duration, and a stream for up to stream.total-timeout, so this is the
+        # ceiling on concurrent streams.
         max-connections: 500
         pending-acquire-timeout: 5s
         # At most the server's, or a request meets a connection the server closed.
         max-idle-time: 30s
         # Picks up DNS changes.
         max-life-time: 5m
+      stream:
+        # Subscribe to the first upstream body byte or error status. No public figure for a reasoning model's first
+        # token: chosen generous, and RTE-02 can tighten it per route.
+        first-byte-timeout: 120s
+        # Between upstream buffers; nginx's proxy_read_timeout default.
+        idle-timeout: 60s
+        # The whole stream: about 90 000 tokens at an assumed 50 tokens/s.
+        total-timeout: 30m
+        # 1KB to 16MB, per event. A chunk is usually under 1 KB; streamed audio and logprobs are larger.
+        max-event-size: 1MB
 
 logging:
   pattern:

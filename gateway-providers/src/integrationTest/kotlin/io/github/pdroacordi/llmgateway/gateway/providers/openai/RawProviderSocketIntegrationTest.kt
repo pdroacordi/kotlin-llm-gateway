@@ -95,6 +95,13 @@ class RawProviderSocketIntegrationTest {
                             maxIdleTime = Duration.ofSeconds(30),
                             maxLifeTime = Duration.ofMinutes(5),
                         ),
+                    stream =
+                        StreamConfig(
+                            Duration.ofSeconds(10),
+                            Duration.ofSeconds(10),
+                            Duration.ofSeconds(10),
+                            1_048_576,
+                        ),
                 ),
                 JsonMapper.builder().build(),
                 Clock.systemUTC(),
@@ -171,6 +178,31 @@ class RawProviderSocketIntegrationTest {
 
         assertEquals(ProviderResult.Failed(ProviderFailure.UpstreamError), complete(provider))
         assertEquals(1, provider.connections.get())
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["200 OK", "500 Internal Server Error"])
+    fun `a chunked body with a bad chunk size is UpstreamError, not a bug`(status: String) {
+        val provider =
+            provider {
+                val head = "HTTP/1.1 $status\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n"
+                it.getOutputStream().write((head + "ZZZ\r\n\r\n").encodeToByteArray())
+                it.close()
+            }
+
+        assertEquals(ProviderResult.Failed(ProviderFailure.UpstreamError), complete(provider))
+    }
+
+    @Test
+    fun `a chunk line over the limit is UpstreamError, not a bug`() {
+        val provider =
+            provider {
+                val head = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n"
+                it.getOutputStream().write((head + "a".repeat(20_000)).encodeToByteArray())
+                it.close()
+            }
+
+        assertEquals(ProviderResult.Failed(ProviderFailure.UpstreamError), complete(provider))
     }
 
     @Test

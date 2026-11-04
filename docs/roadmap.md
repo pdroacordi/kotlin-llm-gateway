@@ -25,12 +25,13 @@ What is built, what is next, and what is waiting on a decision. **This is the st
 | ID | Item | Status | Needs | Updated | Notes |
 |---|---|:-:|---|---|---|
 | GW-01 | `POST /v1/chat/completions` (non-streaming) through `ChatModelPort`; OpenAI adapter | `[x]` | FND-03, FND-04 | 2026-11-03 | Spec: [GW-01](specs/GW-01-chat-completions.md); cross-cutting [ADR-018](DECISIONS.md#adr-018); systems entry [provider-adapters](knowledge/systems/provider-adapters.md). Creates `systems/provider-adapters`. If routes are functional, translate a request-side DataBufferLimitException to ContentTooLarge ([bugs/gateway-body-limit-on-functional-route-gives-500](knowledge/bugs/gateway-body-limit-on-functional-route-gives-500.md)). Built: an OpenAI SDK with its base URL on the gateway gets a provider-shaped completion through `ChatModelPort`, with unknown members verbatim both ways and every upstream failure a sealed `ProviderFailure` and one error row. Smoke [run](knowledge/runs/2026-11-03-smoke-chat-completions.md) pass-with-findings, findings fixed or recorded; 63 PASS, 0 FAIL on the final jars. Real TLS and OpenAI's real error bodies are unproven: a paid `live` call waits on the user. |
-| GW-02 | SSE streaming end to end; cancellation on client disconnect | `[ ]` | GW-01 | 2026-11-03 | BlockHound already guards `gateway-app` (`BlockHoundIntegrationTest`), so the streaming path runs under it from its first test; the check of `RequestIdGenerator.next()` is settled (FND-04 Log). |
-| GW-03 | Anthropic adapter: messages, tool calls and stream translation | `[ ]` | GW-02 | 2026-11-03 | Extends `mock-provider` with scripted tool calls (ADR-FND-03-011). |
+| GW-02 | SSE streaming end to end; cancellation on client disconnect | `[x]` | GW-01 | 2026-11-04 | Spec: [GW-02](specs/GW-02-sse-streaming.md); cross-cutting [ADR-019](DECISIONS.md#adr-019); systems entry [provider-adapters](knowledge/systems/provider-adapters.md). BlockHound already guards `gateway-app` (`BlockHoundIntegrationTest`), so the streaming path runs under it from its first test; the check of `RequestIdGenerator.next()` is settled (FND-04 Log). Built: an OpenAI SDK reads `stream: true` through the gateway chunk by chunk, with the status committed at the first frame, an in-band error frame and a clean end after it, and a client disconnect cancelling the provider call. Smoke [run](knowledge/runs/2026-11-04-smoke-sse-streaming.md) `fail` on the first build, pass-with-findings on the fix build, findings fixed or recorded; R1 went to GW-08. `x_gateway`'s name waits on the user, and real provider framing on a paid `live` call. |
+| GW-03 | Anthropic adapter: messages, tool calls and stream translation | `[ ]` | GW-02 | 2026-11-03 | Extends `mock-provider` with scripted tool calls (ADR-FND-03-011). Emits GW-02's `ProviderStreamEvent`s and reuses `.gateway.providers.sse` (ADR-019). |
 | GW-04 | Teams and API keys: admin API, HMAC-hashed keys, auth filter | `[ ]` | FND-02, GW-01 | 2026-11-03 | Creates `systems/auth-and-teams`; decides R2DBC vs JDBC (ADR-006). Deletes GW-01's stopgap: `ExposureGuard`, `LoopbackHostWebFilter`, `llmgw.security.allow-unauthenticated-exposure` (ADR-GW-01-007). |
 | GW-05 | `POST /v1/embeddings` | `[ ]` | GW-04 | 2026-11-03 | Needed by CACHE-02 and AGT-05. |
 | GW-06 | Tool calling and `response_format` (JSON mode) pass-through | `[ ]` | GW-03 | 2026-11-03 | Extends `mock-provider` with scripted tool calls (ADR-FND-03-011). |
 | GW-07 | Local models through an OpenAI-compatible server | `[?]` | GW-01 | 2026-11-03 | Which local runtime, if any? It would make evals free to run. |
+| GW-08 | Demand-aware idle timeout: do not count time the client, not the provider, holds the stream | `[ ]` | GW-02 | 2026-11-04 | Smoke R1 ([run](knowledge/runs/2026-11-04-smoke-sse-streaming.md), [gotcha](knowledge/gotchas/client-stall-handler-moves-slow-readers-onto-idle-timeout.md)): `Flux.timeout` cannot see demand, so at the defaults a reader below about 11.8 to 19.7 KB/s on 16 KB frames gets `upstream_timeout` from a healthy provider. RTE-02 must not read it as a sick provider. |
 
 ## Observability
 
@@ -45,7 +46,7 @@ What is built, what is next, and what is waiting on a decision. **This is the st
 | ID | Item | Status | Needs | Updated | Notes |
 |---|---|:-:|---|---|---|
 | RL-01 | Per-team request and token limits in Redis (one atomic script per decision); 429 with limit headers | `[ ]` | GW-04, FND-02 | 2026-11-03 | Settles ADR-008. Creates `systems/rate-limiting`. |
-| RL-02 | Token reservation before the call, reconciliation with real usage after (streams included) | `[ ]` | RL-01, GW-02 | 2026-11-03 | |
+| RL-02 | Token reservation before the call, reconciliation with real usage after (streams included) | `[ ]` | RL-01, GW-02 | 2026-11-03 | Reconciles from GW-02's `StreamSummary`, which fires once for cancelled streams too; a suspending call there needs `NonCancellable`. |
 | RL-03 | Concurrency limits and fairness under load; behaviour when Redis is down | `[ ]` | RL-02, OPS-01 | 2026-11-03 | |
 
 ## Routing
@@ -53,7 +54,7 @@ What is built, what is next, and what is waiting on a decision. **This is the st
 | ID | Item | Status | Needs | Updated | Notes |
 |---|---|:-:|---|---|---|
 | RTE-01 | Model aliases and a versioned route table per team | `[ ]` | GW-04 | 2026-11-03 | Creates `systems/routing`. Replaces GW-01's `PassThroughModelResolver`; owns `GET /v1/models`, which no row had (ADR-004, ADR-GW-01-006). |
-| RTE-02 | Fallback chain, retries with jitter, per-deployment circuit breaker | `[ ]` | RTE-01, GW-02 | 2026-11-03 | Decides on GW-01's `ProviderFailure`. OpenAI requires `X-Client-Request-Id` unique per request, so each attempt needs its own value. A future fallback must not repeat a call the provider may have billed: `ProviderUnavailable` means nothing was sent, and every other transport failure is `UpstreamError`. |
+| RTE-02 | Fallback chain, retries with jitter, per-deployment circuit breaker | `[ ]` | RTE-01, GW-02 | 2026-11-03 | Decides on GW-01's `ProviderFailure`. OpenAI requires `X-Client-Request-Id` unique per request, so each attempt needs its own value. A future fallback must not repeat a call the provider may have billed: `ProviderUnavailable` means nothing was sent, and every other transport failure is `UpstreamError`. On a stream, fallback is a loop inside `ChatCompletionService.stream`, on `Failed` before `Started` only (ADR-019). A circuit breaker must not count an `upstream_timeout` that a slow client caused: `Flux.timeout` cannot see demand, so a client too slow to pull a read within `idle-timeout` fails a healthy provider's stream (GW-02 section 5, Back-pressure). |
 | RTE-03 | Weighted, latency-aware and cost-aware routing policies | `[ ]` | RTE-02, OBS-02, COST-01 | 2026-11-03 | `ai-eval` suite `routing`. |
 | RTE-04 | Budget-aware downgrade to a cheaper model when a team nears its budget | `[ ]` | RTE-03, COST-03 | 2026-11-03 | |
 
@@ -64,14 +65,14 @@ What is built, what is next, and what is waiting on a decision. **This is the st
 | CACHE-01 | Exact cache: normalized request hash, team scope, TTL, bypass and status headers | `[ ]` | GW-04, FND-02 | 2026-11-03 | Creates `systems/caching`. |
 | CACHE-02 | Semantic cache: embeddings, vector search, similarity threshold; scope by team, model and system prompt | `[ ]` | CACHE-01, GW-05 | 2026-11-03 | Settles ADR-009. |
 | CACHE-03 | Semantic cache eval: labelled pairs, false-hit rate and hit rate against the threshold | `[ ]` | CACHE-02 | 2026-11-03 | `ai-eval` suite `semantic-cache`; builds the `evals/` runner. |
-| CACHE-04 | Cached responses replayed as SSE streams | `[ ]` | CACHE-01, GW-02 | 2026-11-03 | |
+| CACHE-04 | Cached responses replayed as SSE streams | `[ ]` | CACHE-01, GW-02 | 2026-11-03 | A hit becomes a `Flow<ChatStreamEvent>`, so GW-02's `ChatStreamFrames` writes it unchanged. |
 
 ## Cost
 
 | ID | Item | Status | Needs | Updated | Notes |
 |---|---|:-:|---|---|---|
 | COST-01 | Price catalog: input, output and cached-input prices per model, with effective dates | `[ ]` | GW-04 | 2026-11-03 | Creates `systems/cost`. |
-| COST-02 | Per-call cost, usage events, idempotent ledger writer in Postgres | `[ ]` | COST-01, FND-02 | 2026-11-03 | Settles ADR-010. |
+| COST-02 | Per-call cost, usage events, idempotent ledger writer in Postgres | `[ ]` | COST-01, FND-02 | 2026-11-03 | Settles ADR-010. Streams report through GW-02's `StreamSummary`, cancelled ones included, with `estimated` when the provider's usage never arrived; decides whether cost joins `x_gateway` on the usage chunk. |
 | COST-03 | Team budgets (soft and hard), alerts, cost query API by team, model and day | `[ ]` | COST-02 | 2026-11-03 | |
 
 ## Guardrails
@@ -82,7 +83,7 @@ What is built, what is next, and what is waiting on a decision. **This is the st
 | GRD-02 | PII detection and redaction (CPF, CNPJ, e-mail, phone, card) on input and output | `[ ]` | GRD-01 | 2026-11-03 | `ai-eval` suite `pii`. |
 | GRD-03 | Prompt-injection detection (classifier or judge model) with an eval set | `[ ]` | GRD-01 | 2026-11-03 | `ai-eval` suite `injection`. |
 | GRD-04 | Output JSON-schema validation with one repair retry | `[ ]` | GRD-01, GW-06 | 2026-11-03 | |
-| GRD-05 | Guardrails on streams: sliding-window scan and cut-off | `[ ]` | GRD-02, GW-02 | 2026-11-03 | |
+| GRD-05 | Guardrails on streams: sliding-window scan and cut-off | `[ ]` | GRD-02, GW-02 | 2026-11-03 | A stage on `Flow<ChatStreamEvent>` that reads `ChunkDelta.content` and ends a stream with `Failed`, which GW-02 renders as an in-band error (ADR-019). |
 
 ## Agents
 

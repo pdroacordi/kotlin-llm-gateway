@@ -23,6 +23,19 @@ internal object OpenAiRequestWriter {
         return body.withExtras(call.request.extras, nodes)
     }
 
+    /** `include_usage` is always true upstream, whatever the client asked: the gateway needs it (ADR-GW-02-005). */
+    fun writeStream(
+        call: ChatCall,
+        nodes: JsonNodeFactory,
+    ): ObjectNode {
+        val body = write(call, nodes)
+        body.put("stream", true)
+        val options = body.putObject("stream_options")
+        options.put("include_usage", true)
+        call.request.streamOptions?.let { options.withExtras(it.extras, nodes) }
+        return body
+    }
+
     private fun message(
         message: ChatMessage,
         nodes: JsonNodeFactory,

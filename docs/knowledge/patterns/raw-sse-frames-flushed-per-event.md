@@ -12,6 +12,8 @@ source_files:
   - mock-provider/src/main/kotlin/io/github/pdroacordi/llmgateway/mockprovider/web/SseBodyInserter.kt
   - mock-provider/src/main/kotlin/io/github/pdroacordi/llmgateway/mockprovider/web/Serving.kt
   - mock-provider/src/test/kotlin/io/github/pdroacordi/llmgateway/mockprovider/web/LatencyIntegrationTest.kt
+  - gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/web/SseFrames.kt
+  - gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/web/SseBodyInserter.kt
 ---
 
 ## Summary
@@ -40,3 +42,12 @@ A stream that must match a provider's bytes (OpenAI `data: <json>`, Anthropic `e
 - Never swallow `CancellationException` in the frame-producing flow. A client disconnect arrives as cancellation, and catching it keeps a dead stream "running". Record it in `finally`, and let it propagate.
 - A frame string with a line break in the JSON silently splits into two events; reject it at build time, as `SseFrames` does.
 - `kotlinx-coroutines-reactive` initialises `ReactiveFlowKt` (a `ServiceLoader` jar read) on first use. Initialise it at startup when BlockHound guards the event loop (see the systems entry, Gotchas).
+
+## Revision (2026-11-03)
+
+GW-02 applies this pattern in `gateway-app`, with four differences from the mock (ADR-GW-02-004, ADR-GW-02-007):
+
+- Frames are `Flow<ByteArray>`, not `Flow<String>`: the JSON is serialised once and never decoded again.
+- `frames.asFlux(context)` takes the handler's coroutine context without its `Job`, because the default `Unconfined` context drops `RequestContext` and MDC, and a `Job` would tie the flow to a handler that has already returned.
+- The builder carries no headers: they are set at the first frame ([cold-event-flow-commits-at-first-frame](cold-event-flow-commits-at-first-frame.md)).
+- An expected failure after commit ends the flow normally, after the in-band frame. Only the mock's deliberate aborts escape as exceptions, and those are what produce Reactor Netty's ERROR line.

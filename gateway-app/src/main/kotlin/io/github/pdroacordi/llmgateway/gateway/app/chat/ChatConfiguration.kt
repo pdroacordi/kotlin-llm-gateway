@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.web.reactive.function.server.RouterFunction
 import org.springframework.web.reactive.function.server.ServerResponse
 import tools.jackson.databind.json.JsonMapper
+import java.time.Clock
 
 @Configuration(proxyBeanMethods = false)
 class ChatConfiguration {
@@ -26,7 +27,8 @@ class ChatConfiguration {
     fun chatHandler(
         service: ChatCompletionService,
         mapper: JsonMapper,
-    ): ChatHandler = ChatHandler(service, mapper)
+        clock: Clock,
+    ): ChatHandler = ChatHandler(service, mapper, clock)
 
     @Bean
     fun chatRoutes(handler: ChatHandler): RouterFunction<ServerResponse> = ChatRoutes.routes(handler)

@@ -169,9 +169,6 @@ fi
 
 # 10. Rejections: none reaches the mock.
 before=$(last_seq)
-post '{"model":"mock-chat","messages":[{"role":"user","content":"Hi"}],"stream":true}'
-check "10 stream status" "$STATUS" 400
-check_has "10 stream code" "$BODY" '"code":"unsupported_value"'
 post "$(minimal mock-chat)" -H 'Host: evil.example'
 check "10 foreign Host status" "$STATUS" 403
 STATUS=$(curl -sS --max-time 5 -o "$BODY" -w '%{http_code}' -H 'Content-Type: text/plain' --data 'Hi' "$GATEWAY$ROUTE")

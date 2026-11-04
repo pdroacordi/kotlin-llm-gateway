@@ -214,6 +214,25 @@ class OpenAiResponseReaderTest {
         assertNull(read(body))
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = ["1.5", "null", "\"1\"", "1e99"])
+    fun `an index that is not an integer reads as 0, and does not throw`(index: String) {
+        val body =
+            """{"id":"c","created":1,"model":"m","choices":[{"index":$index,"message":{"content":"Hi"}}]}"""
+
+        val result =
+            checkNotNull(
+                OpenAiResponseReader(JsonMapper.builder().build().exactTreeReader()).read(body.encodeToByteArray()),
+            )
+
+        assertEquals(
+            0,
+            result.completion.choices
+                .single()
+                .index,
+        )
+    }
+
     private companion object {
         const val USAGE =
             """"usage":{"prompt_tokens":14,"completion_tokens":2,"total_tokens":16,""" +

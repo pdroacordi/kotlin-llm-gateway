@@ -42,11 +42,19 @@ sealed interface GatewayError {
                     "messages",
                 )
             val streamMistyped = InvalidRequest("'stream' must be a boolean.", ErrorCodes.INVALID_REQUEST, "stream")
-            val streamingUnavailable =
+            val streamOptionsMistyped =
+                InvalidRequest("'stream_options' must be an object.", ErrorCodes.INVALID_REQUEST, "stream_options")
+            val includeUsageMistyped =
                 InvalidRequest(
-                    "Streaming is not available yet; send stream false or omit it.",
-                    ErrorCodes.UNSUPPORTED_VALUE,
-                    "stream",
+                    "'include_usage' must be a boolean.",
+                    ErrorCodes.INVALID_REQUEST,
+                    "stream_options.include_usage",
+                )
+            val streamOptionsNeedStream =
+                InvalidRequest(
+                    "'stream_options' is only allowed when 'stream' is true.",
+                    ErrorCodes.INVALID_REQUEST,
+                    "stream_options",
                 )
 
             fun messageNotObject(index: Int): InvalidRequest =

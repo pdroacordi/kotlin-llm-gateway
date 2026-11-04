@@ -76,6 +76,7 @@ class OpenAiChatAdapterIntegrationTest {
                         maxIdleTime = Duration.ofSeconds(30),
                         maxLifeTime = Duration.ofMinutes(5),
                     ),
+                stream = StreamConfig(requestTimeout, requestTimeout, requestTimeout, maxResponseBytes),
             ),
             mapper,
             Clock.systemUTC(),

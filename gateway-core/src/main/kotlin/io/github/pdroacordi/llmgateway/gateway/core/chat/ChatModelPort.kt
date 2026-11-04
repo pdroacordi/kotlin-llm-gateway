@@ -2,6 +2,7 @@ package io.github.pdroacordi.llmgateway.gateway.core.chat
 
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
+import kotlinx.coroutines.flow.Flow
 
 /** One provider call. Grows by field (team in GW-04), so the port signature does not change. */
 data class ChatCall(
@@ -22,8 +23,14 @@ sealed interface ProviderResult {
     ) : ProviderResult
 }
 
-/** One port per capability; only adapters see a provider's types. GW-02 adds `stream`. */
+/** One port per capability; only adapters see a provider's types. */
 interface ChatModelPort {
     /** Never throws for an expected failure. Cancellation of the caller cancels the upstream call. */
     suspend fun complete(call: ChatCall): ProviderResult
+
+    /**
+     * Cold: the call starts on collection, and cancelling the collector cancels it. An expected failure is a
+     * [ProviderStreamEvent.Failed], never an exception, at any point in the stream.
+     */
+    fun stream(call: ChatCall): Flow<ProviderStreamEvent>
 }

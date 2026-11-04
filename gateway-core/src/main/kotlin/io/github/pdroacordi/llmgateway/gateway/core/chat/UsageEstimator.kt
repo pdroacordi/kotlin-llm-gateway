@@ -10,9 +10,24 @@ class UsageEstimator {
     fun estimate(
         request: ChatRequest,
         completion: ChatCompletion,
+    ): Usage =
+        estimate(
+            request,
+            completion.choices.map {
+                it.message.content
+                    .orEmpty()
+                    .length
+                    .toLong()
+            },
+        )
+
+    /** [outputCharacters]: one count per choice, never the text, so a stream need not keep it. */
+    fun estimate(
+        request: ChatRequest,
+        outputCharacters: Collection<Long>,
     ): Usage {
         val input = request.messages.sumOf { TOKENS_PER_MESSAGE + tokensIn(it.content) } + TOKENS_PER_REPLY
-        val output = completion.choices.sumOf { tokensIn(it.message.content.orEmpty()) }
+        val output = outputCharacters.sumOf(::tokensFor)
         return Usage(TokenCount(input), TokenCount(output), estimated = true)
     }
 
@@ -29,8 +44,7 @@ class UsageEstimator {
             is ContentPart.Opaque -> 0
         }
 
-    private fun tokensIn(text: String): Long {
-        val rounded = text.length.toLong() + CHARACTERS_PER_TOKEN - 1
-        return rounded / CHARACTERS_PER_TOKEN
-    }
+    private fun tokensIn(text: String): Long = tokensFor(text.length.toLong())
+
+    private fun tokensFor(characters: Long): Long = (characters + CHARACTERS_PER_TOKEN - 1) / CHARACTERS_PER_TOKEN
 }

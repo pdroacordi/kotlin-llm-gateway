@@ -7,6 +7,7 @@ import io.github.pdroacordi.llmgateway.gateway.core.chat.ContentPart
 import io.github.pdroacordi.llmgateway.gateway.core.chat.MessageContent
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ModelName
 import io.github.pdroacordi.llmgateway.gateway.core.chat.Role
+import io.github.pdroacordi.llmgateway.gateway.core.chat.StreamOptions
 import io.github.pdroacordi.llmgateway.gateway.core.error.GatewayError
 import io.github.pdroacordi.llmgateway.gateway.core.json.JsonValue
 import io.github.pdroacordi.llmgateway.gateway.providers.json.toJsonValue
@@ -16,9 +17,10 @@ import tools.jackson.databind.node.ObjectNode
 /** Request body to [ChatRequest]. The checks run in the order of GW-01 section 4, and the first failure answers. */
 object ChatRequestReader {
     private const val TEXT_PART_TYPE = "text"
-    private val REQUEST_MEMBERS = setOf("model", "messages", "stream")
+    private val REQUEST_MEMBERS = setOf("model", "messages", "stream", "stream_options")
     private val MESSAGE_MEMBERS = setOf("role", "content")
     private val TEXT_PART_MEMBERS = setOf("type", "text")
+    private val STREAM_OPTIONS_MEMBERS = setOf("include_usage")
 
     fun read(body: ObjectNode): ChatRequest {
         val model = body.get("model").nonBlankText() ?: reject(GatewayError.InvalidRequest.modelRequired)
@@ -31,8 +33,12 @@ object ChatRequestReader {
                 ?: reject(GatewayError.InvalidRequest.messagesRequired)
         checkMessages(messages)
         checkStream(body.get("stream"))
-        return ChatRequest(ModelName(model), messages.map(::message), body.extras(REQUEST_MEMBERS))
+        val streamOptions = streamOptions(body)
+        return ChatRequest(ModelName(model), messages.map(::message), body.extras(REQUEST_MEMBERS), streamOptions)
     }
+
+    /** The body decides the shape; `Accept` is ignored (ADR-GW-02-011). Only meaningful after [read] passed. */
+    fun wantsStream(body: ObjectNode): Boolean = body.get("stream")?.takeIf { it.isBoolean }?.booleanValue() == true
 
     private fun checkMessages(messages: List<JsonNode>) {
         messages.forEachIndexed { index, message ->
@@ -42,16 +48,30 @@ object ChatRequestReader {
             message.get("role").nonBlankText() ?: reject(GatewayError.InvalidRequest.roleRequired(index))
         }
         messages.forEachIndexed { index, message ->
-            if (!isContent(message.get("content"))) reject(GatewayError.InvalidRequest.contentMistyped(index))
+            val content = message.get("content")
+            val valid = content == null || content.isNull || content.isString || content.isArray
+            if (!valid) reject(GatewayError.InvalidRequest.contentMistyped(index))
         }
     }
-
-    private fun isContent(node: JsonNode?): Boolean = node == null || node.isNull || node.isString || node.isArray
 
     private fun checkStream(stream: JsonNode?) {
         if (stream == null || stream.isNull) return
         if (!stream.isBoolean) reject(GatewayError.InvalidRequest.streamMistyped)
-        if (stream.booleanValue()) reject(GatewayError.InvalidRequest.streamingUnavailable)
+    }
+
+    // GW-02 section 4: the three rows, in this order. `null` counts as absent (ADR-GW-02-010).
+    private fun streamOptions(body: ObjectNode): StreamOptions? {
+        val options = body.get("stream_options")
+        if (options == null || options.isNull) return null
+        if (!options.isObject) reject(GatewayError.InvalidRequest.streamOptionsMistyped)
+        val includeUsage = options.get("include_usage")
+        if (includeUsage != null && !includeUsage.isNull && !includeUsage.isBoolean) {
+            reject(GatewayError.InvalidRequest.includeUsageMistyped)
+        }
+        if (!wantsStream(body)) reject(GatewayError.InvalidRequest.streamOptionsNeedStream)
+        // A null is a NullNode, which booleanValue() refuses: `?.` guards only an absent member.
+        val asked = includeUsage?.takeIf { it.isBoolean }?.booleanValue() == true
+        return StreamOptions(asked, options.extras(STREAM_OPTIONS_MEMBERS))
     }
 
     private fun message(node: JsonNode): ChatMessage =

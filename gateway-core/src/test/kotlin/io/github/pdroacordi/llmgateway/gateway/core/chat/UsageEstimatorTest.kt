@@ -73,6 +73,31 @@ class UsageEstimatorTest {
         assertEquals(TokenCount(10), estimator.estimate(request, completion("")).inputTokens)
     }
 
+    @Test
+    fun `the character estimate equals the non-stream estimate for the same text`() {
+        val request = request(MessageContent.Text("12345"))
+        val completion =
+            ChatCompletion(
+                "id",
+                1,
+                ModelName("m"),
+                listOf(
+                    ChatChoice(0, AssistantMessage("12345"), FinishReason("stop")),
+                    ChatChoice(1, AssistantMessage("1"), FinishReason("stop")),
+                ),
+            )
+
+        assertEquals(estimator.estimate(request, completion), estimator.estimate(request, listOf(5L, 1L)))
+    }
+
+    @Test
+    fun `no output characters count 0 and the result is flagged estimated`() {
+        val usage = estimator.estimate(request(null), emptyList<Long>())
+
+        assertEquals(TokenCount(0), usage.outputTokens)
+        assertTrue(usage.estimated)
+    }
+
     private fun request(content: MessageContent?): ChatRequest =
         ChatRequest(ModelName("m"), listOf(ChatMessage(Role("user"), content)))
 

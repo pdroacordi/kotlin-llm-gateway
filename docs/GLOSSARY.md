@@ -11,13 +11,15 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 | Cache hit (exact) | A response served because a normalized request with the same key was stored before. | `CacheOutcome.EXACT_HIT` |
 | Cache hit (semantic) | A response served because a stored request is similar enough (above the threshold) in embedding space. | `CacheOutcome.SEMANTIC_HIT` |
 | Chat call | One provider call with its request ID, deployment and request. | `ChatCall` |
+| Chat chunk | One streamed delta, translated from the provider's event. | `ChatChunk` |
 | Circuit breaker | Per-deployment switch that stops sending traffic after repeated failures and probes before closing again. | `DeploymentHealth` |
 | Client request ID | A client's own correlation ID, sent in `x-client-request-id` (1 to 512 printable ASCII characters), echoed and logged; never used as the request ID. | `ClientRequestId` |
+| Commit point | The first frame of a stream: the last moment a status or header can change. | `ChatStreamEvent.Started` |
 | Deployment | A concrete target a route can use: provider, provider model name, endpoint, credentials reference. | `Deployment` |
 | Error envelope | The OpenAI error body every gateway error uses: `{"error":{"message","type","param","code"}}`. Expected failures are `GatewayError` variants; one table maps each to status, `type` and `code`. | `GatewayError`, `ErrorReply` |
 | Extras | Members the gateway does not model, carried verbatim beside the typed fields at each level of a request or completion. | `extras`, `JsonValue` |
 | Fail-open / fail-closed | What a stage does when its own dependency fails: let the request through, or reject it. Declared per rule. | `FailureMode` |
-| Fallback chain | Ordered deployments tried for one request, only before the first byte reaches the client. | `FallbackChain` |
+| Fallback chain | Ordered deployments tried for one request, only before the first byte reaches the client (before `Started`). | `FallbackChain` |
 | Guardrail | A rule applied to input or output, with a verdict: allow, redact or block. | `GuardrailRule`, `GuardrailVerdict` |
 | Ledger | Append-only record of the cost of every call, written from usage events. | `LedgerEntry` |
 | Local stack | The seven development services in `deploy/compose.yaml` (Postgres, Redis, Redpanda, OTel collector, Jaeger, Prometheus, Grafana) on loopback ports from `LLMGW_*_PORT`; project `llmgw` unless `COMPOSE_PROJECT_NAME` says otherwise. | `deploy/compose.yaml` |
@@ -37,10 +39,12 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 | Shared container | One Testcontainers container per test JVM for a backing service, started on first use and removed by Ryuk when the JVM ends; never stopped by a test or a Spring context. | `SharedPostgres`, `SharedRedis`, `SharedRedpanda`, `SharedMockProvider` |
 | Stack check | The script that checks a running local stack: services, health, loopback ports, OTLP traces to Jaeger and metrics to Prometheus, Prometheus targets, Grafana datasources; one `PASS` or `FAIL` line per check. | `tools/smoke/stack-check.sh` |
 | Step | One unit inside a run: a model call, a tool call or an approval. | `Step` |
+| Stream event | The sealed values of a stream, ending in one terminal event. | `ProviderStreamEvent`, `ChatStreamEvent` |
+| Stream summary | How a stream ended and its usage, reported once. | `StreamSummary` |
 | Supervisor | Orchestration pattern where one agent decides which agent acts next. | `SupervisorPattern` |
 | Team | The tenant: owns keys, limits, budgets, routes and policies. Every request resolves to one. | `Team` |
 | Tool | A registered HTTP capability an agent can call, described by a JSON schema, on an allowlisted host. | `ToolDefinition` |
-| TTFT | Time to first token: from request receipt to the first streamed chunk sent. | `ttft` metric |
+| TTFT | Time to first token: from request receipt to the first streamed chunk sent. | `ttftMs` in the end-of-stream line, until OBS-02's `ttft` metric |
 | Usage | Provider-reported token counts (input, output, cached input), or an estimate flagged as such; `estimated` when the provider omitted it. | `Usage` |
 | Usage event | The message emitted once per call with team, model, usage and cost, keyed by request ID. | `UsageEvent` |
 | Workflow | A declared orchestration of agents: sequential, parallel fan-out and fan-in, or supervisor. | `Workflow` |

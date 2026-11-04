@@ -2,7 +2,10 @@ package io.github.pdroacordi.llmgateway.gateway.app
 
 import io.github.pdroacordi.llmgateway.gateway.app.chat.FakeChatModelPort
 import io.github.pdroacordi.llmgateway.gateway.app.request.GatewayHeaders
+import io.github.pdroacordi.llmgateway.gateway.core.chat.ProviderStreamEvent
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestIdGenerator
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.reactor.awaitSingle
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -44,6 +47,7 @@ class BlockHoundIntegrationTest(
     @LocalServerPort port: Int,
     @Autowired private val ids: RequestIdGenerator,
     @Autowired private val clock: ThreadRecordingClock,
+    @Autowired private val provider: FakeChatModelPort,
 ) {
     private val client = WebClient.create("http://127.0.0.1:$port")
 
@@ -78,7 +82,7 @@ class BlockHoundIntegrationTest(
                 Mono
                     .fromCallable { Thread.sleep(1) }
                     .subscribeOn(Schedulers.parallel())
-                    .block()
+                    .block(BLOCK_LIMIT)
             }
 
         assertTrue(generateSequence<Throwable>(error) { it.cause }.any { it is BlockingOperationError }) {
@@ -88,7 +92,7 @@ class BlockHoundIntegrationTest(
 
     @Test
     fun `a Thread sleep in a handler on the event loop gives a 500 with the BlockHound error`(output: CapturedOutput) {
-        val response = get("/test-probe/blocking").block()
+        val response = get("/test-probe/blocking").block(BLOCK_LIMIT)
 
         assertEquals(500, response?.statusCode?.value())
         // Names the call, so a block elsewhere on the request path cannot satisfy this test. A 5xx is logged after its
@@ -107,7 +111,7 @@ class BlockHoundIntegrationTest(
                 .range(0, REQUESTS)
                 .flatMap({ get("/test-probe/json") }, CONCURRENCY)
                 .collectList()
-                .block()
+                .block(BLOCK_LIMIT)
                 .orEmpty()
 
         assertEquals(setOf(200), responses.map { it.statusCode.value() }.toSet())
@@ -128,12 +132,64 @@ class BlockHoundIntegrationTest(
                 .flatMap({ chat() }, CONCURRENCY)
                 .map { it.statusCode.value() }
                 .collectList()
-                .block()
+                .block(BLOCK_LIMIT)
                 .orEmpty()
 
         assertEquals(REQUESTS, statuses.size)
         assertEquals(setOf(200), statuses.toSet())
     }
+
+    @Test
+    fun `2000 streams over real sockets at concurrency 32 pass BlockHound, from the first request on`() {
+        provider.reset()
+
+        val bodies =
+            Flux
+                .range(0, REQUESTS)
+                .flatMap({ stream().collectList() }, CONCURRENCY)
+                .collectList()
+                .block(BLOCK_LIMIT)
+                .orEmpty()
+
+        assertEquals(REQUESTS, bodies.size)
+        assertTrue(bodies.all { "[DONE]" in it.joinToString("") }) { bodies.first().toString() }
+    }
+
+    @Test
+    fun `200 streams cancelled mid-flight pass BlockHound`(output: CapturedOutput) {
+        provider.reset()
+        provider.streamAnswer =
+            {
+                flow<ProviderStreamEvent> {
+                    while (true) {
+                        emit(FakeChatModelPort.chunk("Hi"))
+                        Mono.delay(Duration.ofMillis(1)).awaitSingle()
+                    }
+                }
+            }
+
+        val firsts =
+            Flux
+                .range(0, CANCELLED)
+                .flatMap({ stream().take(1).collectList() }, CONCURRENCY)
+                .collectList()
+                .block(BLOCK_LIMIT)
+                .orEmpty()
+
+        assertEquals(CANCELLED, firsts.size)
+        await()
+            .atMost(Duration.ofSeconds(10))
+            .until { output.all.lines().count { "Stream cancelled" in it } == CANCELLED }
+        assertTrue("BlockingOperationError" !in output.all) { output.all }
+    }
+
+    private fun stream(): Flux<String> =
+        client
+            .post()
+            .uri("/v1/chat/completions")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""{"model":"mock-chat","messages":[{"role":"user","content":"Hi"}],"stream":true}""")
+            .exchangeToFlux { it.bodyToFlux(ByteArray::class.java).map(ByteArray::decodeToString) }
 
     @Test
     fun `100 000 draws from the production generator pass BlockHound on a non-blocking thread`() {
@@ -143,7 +199,7 @@ class BlockHoundIntegrationTest(
                     repeat(DRAWS) { ids.next() }
                     Thread.currentThread()
                 }.subscribeOn(Schedulers.parallel())
-                .block()
+                .block(BLOCK_LIMIT)
 
         assertTrue(thread != null && Schedulers.isNonBlockingThread(thread)) { thread?.name.orEmpty() }
     }
@@ -165,6 +221,8 @@ class BlockHoundIntegrationTest(
     private companion object {
         const val REQUESTS = 2000
         const val CONCURRENCY = 32
+        const val CANCELLED = 200
+        val BLOCK_LIMIT: Duration = Duration.ofMinutes(2)
         const val DRAWS = 100_000
 
         // The version digit in the canonical 8-4-4-4-12 text.

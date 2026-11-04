@@ -10,6 +10,7 @@ import io.github.pdroacordi.llmgateway.gateway.core.chat.MessageContent
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ModelName
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ProviderId
 import io.github.pdroacordi.llmgateway.gateway.core.chat.Role
+import io.github.pdroacordi.llmgateway.gateway.core.chat.StreamOptions
 import io.github.pdroacordi.llmgateway.gateway.core.json.JsonValue
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -98,6 +99,46 @@ class OpenAiRequestWriterTest {
                 """{"type":"text","text":"Hi","cache_hint":true},""" +
                 """{"type":"image_url","image_url":{"url":"data:x"}},5]}]}""",
             written(ChatMessage(Role("user"), parts)),
+        )
+    }
+
+    private fun streamed(options: StreamOptions?): String {
+        val request =
+            ChatRequest(
+                ModelName("client-model"),
+                listOf(ChatMessage(Role("user"), MessageContent.Text("Hi"))),
+                JsonValue.Object(mapOf("seed" to JsonValue.Number("7"))),
+                options,
+            )
+        val call = ChatCall(REQUEST_ID, DEPLOYMENT, request)
+        return mapper.writeValueAsString(OpenAiRequestWriter.writeStream(call, JsonNodeFactory.instance))
+    }
+
+    @Test
+    fun `writeStream adds stream true and forces include_usage when the client sent no options`() {
+        assertEquals(
+            """{"model":"provider-model","messages":[{"role":"user","content":"Hi"}],"seed":7,""" +
+                """"stream":true,"stream_options":{"include_usage":true}}""",
+            streamed(null),
+        )
+    }
+
+    @Test
+    fun `writeStream forces include_usage and keeps the client's other members`() {
+        val extras = JsonValue.Object(mapOf("include_obfuscation" to JsonValue.Bool(false)))
+
+        assertEquals(
+            """{"model":"provider-model","messages":[{"role":"user","content":"Hi"}],"seed":7,""" +
+                """"stream":true,"stream_options":{"include_usage":true,"include_obfuscation":false}}""",
+            streamed(StreamOptions(includeUsage = false, extras = extras)),
+        )
+    }
+
+    @Test
+    fun `write stays as it was, with no stream member`() {
+        assertEquals(
+            """{"model":"provider-model","messages":[{"role":"user","content":"Hi"}]}""",
+            written(ChatMessage(Role("user"), MessageContent.Text("Hi"))),
         )
     }
 

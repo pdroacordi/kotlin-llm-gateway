@@ -47,7 +47,7 @@ object ChatResponseWriter {
         return node
     }
 
-    private fun usage(
+    fun usage(
         usage: Usage,
         nodes: JsonNodeFactory,
     ): ObjectNode {
@@ -57,12 +57,12 @@ object ChatResponseWriter {
         node.put("total_tokens", usage.totalTokens.value)
         return node.withExtras(usage.extras, nodes)
     }
+}
 
-    private fun ObjectNode.withExtras(
-        extras: JsonValue.Object,
-        nodes: JsonNodeFactory,
-    ): ObjectNode {
-        extras.members.forEach { (name, value) -> set(name, value.toJsonNode(nodes)) }
-        return this
-    }
+internal fun ObjectNode.withExtras(
+    extras: JsonValue.Object,
+    nodes: JsonNodeFactory,
+): ObjectNode {
+    extras.members.forEach { (name, value) -> set(name, value.toJsonNode(nodes)) }
+    return this
 }

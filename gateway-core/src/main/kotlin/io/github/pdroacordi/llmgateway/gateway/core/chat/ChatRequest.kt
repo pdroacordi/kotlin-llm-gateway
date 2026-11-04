@@ -29,6 +29,7 @@ data class ChatRequest(
     val model: ModelName,
     val messages: List<ChatMessage>,
     val extras: JsonValue.Object = JsonValue.Object.EMPTY,
+    val streamOptions: StreamOptions? = null,
 ) {
     init {
         require(messages.isNotEmpty()) { "A chat request needs at least one message." }
@@ -39,7 +40,7 @@ data class ChatRequest(
         "ChatRequest(model=${model.value}, messages=${messages.size}, extras=${extras.members.size})"
 
     private companion object {
-        val RESERVED = setOf("model", "messages", "stream")
+        val RESERVED = setOf("model", "messages", "stream", "stream_options")
     }
 }
 

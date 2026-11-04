@@ -130,22 +130,6 @@ class ChatCompletionsEndToEndTest(
     }
 
     @Test
-    fun `stream true gives 400 and no upstream call`() {
-        val before = lastSeq()
-
-        chat("""{"model":"mock-chat","messages":[{"role":"user","content":"Hi"}],"stream":true}""")
-            .expectStatus()
-            .isEqualTo(400)
-            .expectBody()
-            .jsonPath("$.error.code")
-            .isEqualTo("unsupported_value")
-            .jsonPath("$.error.param")
-            .isEqualTo("stream")
-
-        assertEquals(before, lastSeq())
-    }
-
-    @Test
     fun `the default bind address is loopback`() {
         assertEquals("127.0.0.1", environment.getProperty("server.address"))
     }

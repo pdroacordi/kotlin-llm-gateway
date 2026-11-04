@@ -15,6 +15,29 @@ internal data class ProviderErrorFields(
 ) {
     companion object {
         val NONE = ProviderErrorFields(null, null, null)
+
+        // Tight enough that neither can carry a sentence (GW-01 section 4).
+        private val CODE = Regex("""[a-z0-9_.-]{1,64}""")
+        private val PARAM = Regex("""[A-Za-z0-9_.\[\]-]{1,128}""")
+
+        /** [error] is the provider's `error` member; anything but an object has no fields. */
+        fun of(error: JsonNode): ProviderErrorFields {
+            if (!error.isObject) return NONE
+            return ProviderErrorFields(
+                code = error.safeText("code", CODE),
+                type = error.safeText("type", CODE),
+                param = error.safeText("param", PARAM),
+            )
+        }
+
+        private fun JsonNode.safeText(
+            name: String,
+            allowed: Regex,
+        ): String? =
+            get(name)
+                ?.takeIf { it.isString }
+                ?.stringValue()
+                ?.takeIf { allowed.matches(it) }
     }
 }
 
@@ -68,24 +91,32 @@ internal class OpenAiFailureClassifier(
     }
 
     /** Tolerates a non-JSON body, such as a proxy's HTML 502. */
-    fun errorFields(body: ByteArray): ProviderErrorFields {
-        val error = trees.readTreeOrNull(body)?.get("error")
-        if (error == null || !error.isObject) return ProviderErrorFields.NONE
-        return ProviderErrorFields(
-            code = error.safeText("code", CODE),
-            type = error.safeText("type", CODE),
-            param = error.safeText("param", PARAM),
-        )
-    }
+    fun errorFields(body: ByteArray): ProviderErrorFields =
+        trees.readTreeOrNull(body)?.get("error")?.let(ProviderErrorFields::of) ?: ProviderErrorFields.NONE
 
-    private fun JsonNode.safeText(
-        name: String,
-        allowed: Regex,
-    ): String? =
-        get(name)
-            ?.takeIf { it.isString }
-            ?.stringValue()
-            ?.takeIf { allowed.matches(it) }
+    /** GW-02 section 4. OpenAI documents no in-band shape, so this table is the gateway's reading of the SDKs. */
+    fun classifyInBand(fields: ProviderErrorFields): ProviderFailure =
+        when {
+            fields.code in QUOTA_SET || fields.type in QUOTA_SET -> {
+                ProviderFailure.UpstreamQuotaExhausted
+            }
+
+            fields.code == MODEL_NOT_FOUND -> {
+                ProviderFailure.ModelNotFound
+            }
+
+            fields.type == RATE_LIMIT_TYPE || fields.code == RATE_LIMIT_CODE -> {
+                ProviderFailure.UpstreamRateLimited(null)
+            }
+
+            fields.type == INVALID_REQUEST_TYPE -> {
+                ProviderFailure.RejectedByProvider(BAD_REQUEST, fields.code, fields.param)
+            }
+
+            else -> {
+                ProviderFailure.UpstreamError
+            }
+        }
 
     private companion object {
         const val BAD_REQUEST = 400
@@ -99,6 +130,9 @@ internal class OpenAiFailureClassifier(
         const val SERVICE_UNAVAILABLE = 503
         const val GATEWAY_TIMEOUT = 504
         const val MODEL_NOT_FOUND = "model_not_found"
+        const val RATE_LIMIT_TYPE = "rate_limit_error"
+        const val RATE_LIMIT_CODE = "rate_limit_exceeded"
+        const val INVALID_REQUEST_TYPE = "invalid_request_error"
 
         // OpenAI's error-codes guide; insufficient_quota from FND-03's override note.
         val QUOTA_SET =
@@ -109,9 +143,5 @@ internal class OpenAiFailureClassifier(
                 "project_spend_limit_exceeded",
                 "organization_usage_limit_exceeded",
             )
-
-        // Tight enough that neither can carry a sentence (GW-01 section 4).
-        val CODE = Regex("""[a-z0-9_.-]{1,64}""")
-        val PARAM = Regex("""[A-Za-z0-9_.\[\]-]{1,128}""")
     }
 }

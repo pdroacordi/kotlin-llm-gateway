@@ -3,6 +3,7 @@ package io.github.pdroacordi.llmgateway.gateway.app.config
 import io.github.pdroacordi.llmgateway.gateway.providers.ApiKey
 import io.github.pdroacordi.llmgateway.gateway.providers.openai.OpenAiAdapterConfig
 import io.github.pdroacordi.llmgateway.gateway.providers.openai.PoolConfig
+import io.github.pdroacordi.llmgateway.gateway.providers.openai.StreamConfig
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.util.unit.DataSize
 import java.net.URI
@@ -21,12 +22,20 @@ data class OpenAiProperties(
     val requestTimeout: Duration,
     val maxResponseSize: DataSize,
     val pool: Pool,
+    val stream: Stream,
 ) {
     data class Pool(
         val maxConnections: Int,
         val pendingAcquireTimeout: Duration,
         val maxIdleTime: Duration,
         val maxLifeTime: Duration,
+    )
+
+    data class Stream(
+        val firstByteTimeout: Duration,
+        val idleTimeout: Duration,
+        val totalTimeout: Duration,
+        val maxEventSize: DataSize,
     )
 
     fun toAdapterConfig(): OpenAiAdapterConfig {
@@ -45,6 +54,7 @@ data class OpenAiProperties(
             maxResponseSize in MIN_RESPONSE_SIZE..MAX_RESPONSE_SIZE,
         ) { "$PREFIX.max-response-size must be 1KB to 256MB." }
         check(pool.maxConnections > 0) { "$PREFIX.pool.max-connections must be positive." }
+        checkStream()
         return OpenAiAdapterConfig(
             baseUrl = validBaseUrl(),
             apiKey = apiKey,
@@ -58,7 +68,29 @@ data class OpenAiProperties(
                     maxIdleTime = pool.maxIdleTime,
                     maxLifeTime = pool.maxLifeTime,
                 ),
+            stream =
+                StreamConfig(
+                    firstByteTimeout = stream.firstByteTimeout,
+                    idleTimeout = stream.idleTimeout,
+                    totalTimeout = stream.totalTimeout,
+                    maxEventBytes = stream.maxEventSize.toBytes().toInt(),
+                ),
         )
+    }
+
+    private fun checkStream() {
+        positive("stream.first-byte-timeout", stream.firstByteTimeout)
+        positive("stream.idle-timeout", stream.idleTimeout)
+        positive("stream.total-timeout", stream.totalTimeout)
+        check(stream.firstByteTimeout <= stream.totalTimeout) {
+            "$PREFIX.stream.first-byte-timeout must not exceed stream.total-timeout."
+        }
+        check(stream.idleTimeout <= stream.totalTimeout) {
+            "$PREFIX.stream.idle-timeout must not exceed stream.total-timeout."
+        }
+        check(stream.maxEventSize in MIN_EVENT_SIZE..MAX_EVENT_SIZE) {
+            "$PREFIX.stream.max-event-size must be 1KB to 16MB."
+        }
     }
 
     // The value is not echoed: user info is exactly what this refuses.
@@ -86,5 +118,7 @@ data class OpenAiProperties(
         val SCHEMES = setOf("http", "https")
         val MIN_RESPONSE_SIZE: DataSize = DataSize.ofKilobytes(1)
         val MAX_RESPONSE_SIZE: DataSize = DataSize.ofMegabytes(256)
+        val MIN_EVENT_SIZE: DataSize = DataSize.ofKilobytes(1)
+        val MAX_EVENT_SIZE: DataSize = DataSize.ofMegabytes(16)
     }
 }

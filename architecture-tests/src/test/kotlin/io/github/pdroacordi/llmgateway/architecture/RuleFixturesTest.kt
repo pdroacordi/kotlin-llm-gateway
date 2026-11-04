@@ -299,6 +299,8 @@ class RuleFixturesTest {
         val openAi = "$BASE_PACKAGE.gateway.providers.openai"
         assertFlags(violations, "ARCH-12", "LeakyHandler.kt", "imports $openAi.OpenAiChatAdapter")
         assertFlags(violations, "ARCH-12", "LeakyHandler.kt", "references $openAi.OpenAiAdapterConfig")
+        val anthropic = "$BASE_PACKAGE.gateway.providers.anthropic"
+        assertFlags(violations, "ARCH-12", "LeakyHandler.kt", "imports $anthropic.AnthropicChatAdapter")
     }
 
     @Test
@@ -331,6 +333,25 @@ class RuleFixturesTest {
         assertTrue(violations.none { "AllowedWiring.kt" in it || "AllowedJsonHelper.kt" in it }) {
             violations.toString()
         }
+    }
+
+    @Test
+    fun `ARCH-13 fails on a provider adapter importing or writing inline another provider's type`() {
+        val violations = providerAdaptersDoNotNameEachOther(fixture(ARCH_13))
+        val providers = "$BASE_PACKAGE.gateway.providers"
+        assertFlags(violations, "ARCH-13", "ImportsOpenAi.kt", "imports $providers.openai.OpenAiFailureClassifier")
+        assertFlags(
+            violations,
+            "ARCH-13",
+            "NamesAnthropic.kt",
+            "references $providers.anthropic.AnthropicAdapterConfig",
+        )
+    }
+
+    @Test
+    fun `ARCH-13 allows the shared packages to be named`() {
+        val violations = providerAdaptersDoNotNameEachOther(fixture(ARCH_13))
+        assertTrue(violations.none { "AllowedShared.kt" in it }) { violations.toString() }
     }
 
     @Test
@@ -380,6 +401,7 @@ class RuleFixturesTest {
         const val FIXTURES_DIR = "src/fixtures/kotlin"
         const val ARCH_10 = "arch-10-error-handling-outside-error-package"
         const val ARCH_12 = "arch-12-adapter-outside-wiring"
+        const val ARCH_13 = "arch-13-provider-names-provider"
         const val ARCH_9_TEST_SUPPORT = "arch-9-core-imports-test-support"
         const val ARCH_11_UNIT_TEST = "arch-11-testcontainers-in-unit-test"
     }

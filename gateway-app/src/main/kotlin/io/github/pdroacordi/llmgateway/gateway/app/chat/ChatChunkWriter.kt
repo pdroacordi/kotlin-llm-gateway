@@ -1,14 +1,13 @@
 package io.github.pdroacordi.llmgateway.gateway.app.chat
 
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatChunk
+import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatExtensions
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ChunkChoice
 import tools.jackson.databind.node.JsonNodeFactory
 import tools.jackson.databind.node.ObjectNode
 
 /** [ChatChunk] to OpenAI's chunk: typed members first, then the provider's others in the order received. */
 object ChatChunkWriter {
-    /** The one place this name lives (ADR-GW-02-005). */
-    const val EXTENSION_MEMBER = "llmgw"
     const val USAGE_ESTIMATED_MEMBER = "usage_estimated"
     private const val OBJECT = "chat.completion.chunk"
 
@@ -33,7 +32,7 @@ object ChatChunkWriter {
         }
         body.withExtras(chunk.extras, nodes)
         if (includeUsage && chunk.usage?.estimated == true) {
-            body.putObject(EXTENSION_MEMBER).put(USAGE_ESTIMATED_MEMBER, true)
+            body.putObject(ChatExtensions.MEMBER).put(USAGE_ESTIMATED_MEMBER, true)
         }
         return body
     }

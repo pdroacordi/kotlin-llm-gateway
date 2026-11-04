@@ -35,6 +35,7 @@ class ServerStreamPropertiesTest {
 
         assertTrue("llmgw.server.client-write-timeout" in message) { message }
         assertTrue("llmgw.providers.openai.stream.idle-timeout" in message) { message }
+        assertTrue("llmgw.providers.anthropic.stream.idle-timeout" in message) { message }
     }
 
     @Test

@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import org.junit.jupiter.params.provider.ValueSource
+import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 
 class AnthropicRequestsTest {
@@ -84,4 +86,43 @@ class AnthropicRequestsTest {
     }
 
     private fun tree(json: String) = mapper.readTree(json.trimIndent())
+
+    private fun conversation(next: String): JsonNode =
+        tree(
+            """
+            {"model":"m","max_tokens":8,"messages":[{"role":"user","content":"go"},
+             {"role":"assistant","content":[{"type":"tool_use","id":"a","name":"n","input":{}},
+              {"type":"tool_use","id":"b","name":"n","input":{}}]}$next]}
+            """,
+        )
+
+    @Test
+    fun `tool_result blocks first, covering every id, pass the conversation check`() {
+        val next =
+            """,{"role":"user","content":[{"type":"tool_result","tool_use_id":"b","content":"1"},
+                {"type":"tool_result","tool_use_id":"a","content":"2"},{"type":"text","text":"more"}]}"""
+
+        assertEquals("m", AnthropicRequests.messages(conversation(next)).model)
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+        strings = [
+            """"plain"""",
+            """[{"type":"tool_result","tool_use_id":"a","content":"1"}]""",
+            """[{"type":"text","text":"x"},{"type":"tool_result","tool_use_id":"a"},
+              {"type":"tool_result","tool_use_id":"b"}]""",
+        ],
+    )
+    fun `a user message that does not answer every tool_use first is a 400`(content: String) {
+        val next = ""","role":"user","content":$content"""
+        val rejection = assertThrows<MockRejection> { AnthropicRequests.messages(conversation(",{${next.drop(1)}}")) }
+
+        assertEquals("messages[2].content", rejection.param)
+    }
+
+    @Test
+    fun `an assistant tool_use as the last message passes the check`() {
+        assertEquals("m", AnthropicRequests.messages(conversation("")).model)
+    }
 }

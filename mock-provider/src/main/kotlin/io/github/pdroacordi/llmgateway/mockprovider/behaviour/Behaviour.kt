@@ -52,10 +52,43 @@ enum class ContentMode(
     }
 }
 
+/** [id] null takes the renderer's default; [inputJson] is compact JSON text, since `generation` stays pure. */
+data class ToolCallSpec(
+    val id: String?,
+    val name: String,
+    val inputJson: String,
+    val chunkChars: Int? = null,
+)
+
+/** Exactly one is set: a `thinking` block's [signature], or a `redacted_thinking` block's opaque [redacted] data. */
+data class ThinkingSpec(
+    val signature: String? = null,
+    val redacted: String? = null,
+)
+
+/** Stop reasons a scenario can force; [wire] is the scenario's value (GW-03 section 7). */
+enum class ScriptedFinish(
+    val wire: String,
+) {
+    STOP_SEQUENCE("stop_sequence"),
+    REFUSAL("refusal"),
+    PAUSE_TURN("pause_turn"),
+    CONTEXT_WINDOW("context_window"),
+    ;
+
+    companion object {
+        fun fromWire(value: String): ScriptedFinish? = entries.firstOrNull { it.wire == value }
+    }
+}
+
+/** A null member is inherited; an empty list clears an inherited one. */
 data class ContentSpec(
     val mode: ContentMode? = null,
     val text: String? = null,
     val completionTokens: Int? = null,
+    val toolCalls: List<ToolCallSpec>? = null,
+    val finish: ScriptedFinish? = null,
+    val thinking: List<ThinkingSpec>? = null,
 )
 
 data class UsageSpec(
@@ -85,6 +118,9 @@ data class ResolvedContent(
     val mode: ContentMode,
     val text: String?,
     val completionTokens: Int,
+    val toolCalls: List<ToolCallSpec> = emptyList(),
+    val finish: ScriptedFinish? = null,
+    val thinking: List<ThinkingSpec> = emptyList(),
 )
 
 data class ResolvedUsage(

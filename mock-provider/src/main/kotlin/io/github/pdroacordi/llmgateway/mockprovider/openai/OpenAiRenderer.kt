@@ -3,13 +3,26 @@ package io.github.pdroacordi.llmgateway.mockprovider.openai
 import io.github.pdroacordi.llmgateway.mockprovider.generation.CompletionPlan
 import io.github.pdroacordi.llmgateway.mockprovider.generation.Embedder
 import io.github.pdroacordi.llmgateway.mockprovider.generation.Finish
+import io.github.pdroacordi.llmgateway.mockprovider.generation.PlanPart
 import io.github.pdroacordi.llmgateway.mockprovider.generation.PlannedUsage
 import io.github.pdroacordi.llmgateway.mockprovider.sse.SseFrames
 import io.github.pdroacordi.llmgateway.mockprovider.web.ErrorBody
+import io.github.pdroacordi.llmgateway.mockprovider.web.Piece
 import io.github.pdroacordi.llmgateway.mockprovider.web.Reply
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.databind.node.ObjectNode
 import java.util.Locale
+
+private fun functionCall(
+    target: ObjectNode,
+    seq: Long,
+    index: Int,
+    call: PlanPart.ToolCall,
+    arguments: String,
+) {
+    target.put("id", call.id ?: "call_mock_${seq}_$index").put("type", "function")
+    target.putObject("function").put("name", call.name).put("arguments", arguments)
+}
 
 /**
  * OpenAI bodies as explicit trees: member presence (`usage` absent versus null) and order are part of the contract
@@ -27,12 +40,19 @@ class OpenAiRenderer(
         val root = header(seq, "chat.completion", created, model)
         val choice = root.putArray("choices").addObject()
         choice.put("index", 0)
-        choice
-            .putObject("message")
-            .put("role", "assistant")
-            .put("content", plan.text)
-            .putNull("refusal")
-            .putArray("annotations")
+        val message = choice.putObject("message").put("role", "assistant")
+        if (plan.text.isEmpty() && plan.toolCalls.isNotEmpty()) {
+            message.putNull("content")
+        } else {
+            message.put("content", plan.text)
+        }
+        if (plan.toolCalls.isNotEmpty()) {
+            val calls = message.putArray("tool_calls")
+            plan.toolCalls.forEachIndexed { index, call ->
+                functionCall(calls.addObject(), seq, index, call, call.inputJson)
+            }
+        }
+        message.putNull("refusal").putArray("annotations")
         choice.putNull("logprobs")
         choice.put("finish_reason", finishReason(plan.finish))
         if (!plan.usage.omit) root.set("usage", usage(plan.usage))
@@ -69,10 +89,42 @@ class OpenAiRenderer(
             if (finish == null) choice.putNull("finish_reason") else choice.put("finish_reason", finish)
         }
 
-        val opening = chunk { root -> choice(root, null) { it.put("role", "assistant").put("content", "") } }
-        val pieces = plan.pieces.map { piece -> chunk { root -> choice(root, null) { it.put("content", piece) } } }
+        fun toolChunk(
+            index: Int,
+            fill: (ObjectNode) -> Unit,
+        ): String =
+            chunk { root ->
+                choice(root, null) { delta -> fill(delta.putArray("tool_calls").addObject().put("index", index)) }
+            }
+
+        val opening =
+            chunk { root ->
+                choice(root, null) { delta ->
+                    delta.put("role", "assistant")
+                    if (plan.parts.any { it is PlanPart.Text }) delta.put("content", "") else delta.putNull("content")
+                }
+            }
+        val pieces = mutableListOf<Piece>()
+        val pending = mutableListOf<String>()
+        plan.parts.filterIsInstance<PlanPart.Text>().forEach { text ->
+            text.pieces.forEach { piece ->
+                pieces +=
+                    Piece(chunk { root -> choice(root, null) { it.put("content", piece) } })
+            }
+        }
+        plan.toolCalls.forEachIndexed { index, call ->
+            // OpenAI sends an empty input as arguments, and has no empty `partial_json` to stand for it.
+            val arguments = if (call.pieces.isEmpty()) call.inputJson else ""
+            pending += toolChunk(index) { functionCall(it, seq, index, call, arguments) }
+            call.pieces.forEach { piece ->
+                val frame = toolChunk(index) { it.putObject("function").put("arguments", piece) }
+                pieces += Piece(pending + frame)
+                pending.clear()
+            }
+        }
         val closing =
             buildList {
+                addAll(pending)
                 add(chunk { root -> choice(root, finishReason(plan.finish)) {} })
                 if (includeUsage && !plan.usage.omit) {
                     add(
@@ -173,8 +225,10 @@ class OpenAiRenderer(
 
     private fun finishReason(finish: Finish): String =
         when (finish) {
-            Finish.STOP -> "stop"
-            Finish.LENGTH -> "length"
+            Finish.STOP, Finish.STOP_SEQUENCE -> "stop"
+            Finish.LENGTH, Finish.PAUSE_TURN, Finish.CONTEXT_WINDOW -> "length"
+            Finish.TOOL_CALLS -> "tool_calls"
+            Finish.REFUSAL -> "content_filter"
         }
 
     companion object {

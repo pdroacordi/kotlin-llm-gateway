@@ -121,6 +121,12 @@ sealed interface ProviderFailure : GatewayError {
         }
     }
 
+    /** Nothing was sent: this provider cannot honour the request. [param] holds no request content. */
+    data class UnsupportedByProvider(
+        val code: String,
+        val param: String?,
+    ) : ProviderFailure
+
     data object UpstreamAuthFailed : ProviderFailure
 
     data class UpstreamRateLimited(

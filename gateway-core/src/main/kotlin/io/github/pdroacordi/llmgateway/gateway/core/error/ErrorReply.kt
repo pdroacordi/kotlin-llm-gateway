@@ -34,6 +34,7 @@ object ErrorCodes {
     const val UNSUPPORTED_MEDIA_TYPE = "unsupported_media_type"
     const val INTERNAL_ERROR = "internal_error"
     const val UNSUPPORTED_VALUE = "unsupported_value"
+    const val UNSUPPORTED_PARAMETER = "unsupported_parameter"
     const val MODEL_NOT_FOUND = "model_not_found"
     const val UPSTREAM_REJECTED_REQUEST = "upstream_rejected_request"
     const val UPSTREAM_AUTH_FAILED = "upstream_auth_failed"
@@ -203,6 +204,15 @@ private fun providerReply(
                 failure.status,
                 "The provider rejected the request; see the code and param members.",
                 failure.code ?: ErrorCodes.UPSTREAM_REJECTED_REQUEST,
+                failure.param,
+            )
+        }
+
+        is ProviderFailure.UnsupportedByProvider -> {
+            clientError(
+                HttpStatuses.BAD_REQUEST,
+                "The selected model's provider does not support this request; see the code and param members.",
+                failure.code,
                 failure.param,
             )
         }

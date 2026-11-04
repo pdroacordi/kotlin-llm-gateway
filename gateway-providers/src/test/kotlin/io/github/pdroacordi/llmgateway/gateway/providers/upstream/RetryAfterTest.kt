@@ -1,4 +1,4 @@
-package io.github.pdroacordi.llmgateway.gateway.providers.openai
+package io.github.pdroacordi.llmgateway.gateway.providers.upstream
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull

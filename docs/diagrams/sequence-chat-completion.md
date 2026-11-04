@@ -1,6 +1,6 @@
 # Request pipeline: chat completion
 
-Updated: 2026-11-03 (target design; GW-01 and GW-02 built the first slice)
+Updated: 2026-11-04 (target design; GW-01, GW-02 and GW-03 built the first slice)
 
 ```mermaid
 sequenceDiagram
@@ -12,7 +12,8 @@ sequenceDiagram
     participant G as GuardrailPort
     participant K as ResponseCachePort
     participant R as Router
-    participant P as ChatModelPort
+    participant P as RoutingChatModelPort
+    participant D as OpenAiChatAdapter or AnthropicChatAdapter
     participant U as UsageSink
 
     C->>API: POST /v1/chat/completions
@@ -36,10 +37,15 @@ sequenceDiagram
         API->>R: route(request, deployment health, budget state)
         R-->>API: deployment + fallback chain
         API->>P: complete or stream
+        P->>D: by deployment.provider
+        alt member the adapter cannot honour
+            D-->>API: UnsupportedByProvider
+            API-->>C: 400, no upstream call
+        end
         opt fails before the first byte
             API->>P: next deployment in the chain
         end
-        P-->>API: response + usage
+        D-->>API: response + usage
         API->>G: output rules
         API->>K: store (cacheable and allowed only)
     end
@@ -48,9 +54,10 @@ sequenceDiagram
     API-->>C: 200 or SSE stream + x-gateway-* headers
 ```
 
-- Every error in the diagram (429, 400 guardrail) is written by the one mapper, `GatewayErrorWebExceptionHandler`, as the OpenAI envelope and carries `x-request-id` (FND-04).
+- Every error in the diagram (429, 400 guardrail, 400 unsupported member) is written by the one mapper, `GatewayErrorWebExceptionHandler`, as the OpenAI envelope and carries `x-request-id` (FND-04).
 - Rate limiting runs first so a rejected request costs one Redis call.
 - Input guardrails run before the cache: the key is computed on the redacted prompt, and a prompt blocked today is not served from a cache filled before the rule existed.
 - On a stream, output rules scan a sliding window (GRD-05), and reconciliation and the usage event happen when the stream ends or the client disconnects. A stream is cold: the provider call starts when the body is subscribed, and a failure before the first chunk is still an error status.
 - Each participant is a span (OBS-01).
-- Built by GW-01 and GW-02: request ID, `ModelResolver`, `ChatModelPort.complete` and `stream`, the reply, SSE with commit at the first frame. Auth, limits, guardrails, cache and usage events are later items.
+- Built by GW-01, GW-02 and GW-03: request ID, `ModelResolver`, `RoutingChatModelPort` over both adapters, `complete` and `stream`, the reply, SSE with commit at the first frame. Auth, limits, guardrails, cache and usage events are later items. Until RTE-01 `PrefixModelResolver` stands in for the router and there is no fallback chain.
+- The Anthropic branch of a stream is in [sequence-anthropic-stream](sequence-anthropic-stream.md).

@@ -2,6 +2,7 @@ package io.github.pdroacordi.llmgateway.mockprovider.anthropic
 
 import io.github.pdroacordi.llmgateway.mockprovider.generation.CompletionPlan
 import io.github.pdroacordi.llmgateway.mockprovider.generation.Finish
+import io.github.pdroacordi.llmgateway.mockprovider.generation.PlanPart
 import io.github.pdroacordi.llmgateway.mockprovider.sse.SseFrames
 import io.github.pdroacordi.llmgateway.mockprovider.web.ErrorBody
 import io.github.pdroacordi.llmgateway.mockprovider.web.Reply
@@ -13,6 +14,8 @@ import java.util.Locale
 class AnthropicRenderer(
     private val mapper: JsonMapper,
 ) {
+    private val frames = AnthropicFrames(mapper)
+
     fun message(
         seq: Long,
         model: String,
@@ -20,7 +23,23 @@ class AnthropicRenderer(
     ): String {
         val root = messageHeader(seq, model)
         val content = root.putArray("content")
-        if (plan.text.isNotEmpty()) content.addObject().put("type", "text").put("text", plan.text)
+        var toolIndex = 0
+        plan.parts.forEach { part ->
+            when (part) {
+                is PlanPart.Thinking -> {
+                    content.add(frames.thinkingBlock(part, part.signature.orEmpty()))
+                }
+
+                is PlanPart.Text -> {
+                    val text = part.pieces.joinToString("")
+                    if (text.isNotEmpty()) content.addObject().put("type", "text").put("text", text)
+                }
+
+                is PlanPart.ToolCall -> {
+                    content.add(frames.toolUseBlock(seq, toolIndex++, part, mapper.readTree(part.inputJson)))
+                }
+            }
+        }
         root.put("stop_reason", stopReason(plan.finish))
         root.putNull("stop_sequence")
         if (!plan.usage.omit) {
@@ -37,7 +56,8 @@ class AnthropicRenderer(
 
     /**
      * `message_delta.usage` carries only the cumulative `output_tokens`, like the documented example; input and cache
-     * counts are in `message_start`, which reports `output_tokens: 1`.
+     * counts are in `message_start`, which reports `output_tokens: 1`. Blocks follow the plan's parts; frames with no
+     * piece of their own ride on the next piece, or go to [Reply.Stream.opening] before the first.
      */
     fun stream(
         seq: Long,
@@ -50,38 +70,23 @@ class AnthropicRenderer(
         start.putNull("stop_sequence")
         if (!plan.usage.omit) inputUsage(start.putObject("usage"), plan).put("output_tokens", 1)
 
+        val blocks = frames.blockFrames(seq, plan)
         val opening =
-            listOf(
-                event("message_start") { it.set("message", start) },
-                event("content_block_start") { root ->
-                    root
-                        .put("index", 0)
-                        .putObject("content_block")
-                        .put("type", "text")
-                        .put("text", "")
-                },
-                event("ping") {},
-            )
-        val pieces =
-            plan.pieces.map { piece ->
-                event("content_block_delta") { root ->
-                    root
-                        .put("index", 0)
-                        .putObject("delta")
-                        .put("type", "text_delta")
-                        .put("text", piece)
-                }
+            buildList {
+                add(frames.event("message_start") { it.set("message", start) })
+                addAll(blocks.beforeFirstPiece)
+                add(frames.event("ping") {})
             }
         val closing =
-            listOf(
-                event("content_block_stop") { it.put("index", 0) },
-                event("message_delta") { root ->
-                    root.putObject("delta").put("stop_reason", stopReason(plan.finish)).putNull("stop_sequence")
-                    if (!plan.usage.omit) root.putObject("usage").put("output_tokens", plan.usage.completionTokens)
-                },
-                event("message_stop") {},
-            )
-        return Reply.Stream(opening, pieces, closing, MALFORMED_EVENT, ::streamError)
+            blocks.afterLastPiece +
+                listOf(
+                    frames.event("message_delta") { root ->
+                        root.putObject("delta").put("stop_reason", stopReason(plan.finish)).putNull("stop_sequence")
+                        if (!plan.usage.omit) root.putObject("usage").put("output_tokens", plan.usage.completionTokens)
+                    },
+                    frames.event("message_stop") {},
+                )
+        return Reply.Stream(opening, blocks.pieces, closing, MALFORMED_EVENT, ::streamError)
     }
 
     fun error(
@@ -98,17 +103,9 @@ class AnthropicRenderer(
 
     private fun errorRoot(body: ErrorBody): ObjectNode {
         val root = mapper.createObjectNode().put("type", "error")
-        root.putObject("error").put("type", body.type).put("message", body.message)
+        val error = root.putObject("error").put("type", body.type).put("message", body.message)
+        body.code?.let { error.putObject("details").put("error_code", it) }
         return root
-    }
-
-    private fun event(
-        type: String,
-        fill: (ObjectNode) -> Unit,
-    ): String {
-        val root = mapper.createObjectNode().put("type", type)
-        fill(root)
-        return SseFrames.anthropicEvent(type, mapper.writeValueAsString(root))
     }
 
     private fun messageHeader(
@@ -136,6 +133,11 @@ class AnthropicRenderer(
         when (finish) {
             Finish.STOP -> "end_turn"
             Finish.LENGTH -> "max_tokens"
+            Finish.TOOL_CALLS -> "tool_use"
+            Finish.STOP_SEQUENCE -> "stop_sequence"
+            Finish.REFUSAL -> "refusal"
+            Finish.PAUSE_TURN -> "pause_turn"
+            Finish.CONTEXT_WINDOW -> "model_context_window_exceeded"
         }
 
     companion object {

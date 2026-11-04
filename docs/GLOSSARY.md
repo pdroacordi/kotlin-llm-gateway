@@ -15,20 +15,27 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 | Circuit breaker | Per-deployment switch that stops sending traffic after repeated failures and probes before closing again. | `DeploymentHealth` |
 | Client request ID | A client's own correlation ID, sent in `x-client-request-id` (1 to 512 printable ASCII characters), echoed and logged; never used as the request ID. | `ClientRequestId` |
 | Commit point | The first frame of a stream: the last moment a status or header can change. | `ChatStreamEvent.Started` |
+| Conversation check | The mock provider's rule that a user message right after an assistant `tool_use` starts with `tool_result` blocks covering every `tool_use` ID, else a 400, so a wrongly translated conversation fails a test. | `AnthropicRequests` |
 | Deployment | A concrete target a route can use: provider, provider model name, endpoint, credentials reference. | `Deployment` |
 | Error envelope | The OpenAI error body every gateway error uses: `{"error":{"message","type","param","code"}}`. Expected failures are `GatewayError` variants; one table maps each to status, `type` and `code`. | `GatewayError`, `ErrorReply` |
+| Extension member | `llmgw`: the one member the gateway adds to OpenAI's shape, on messages, deltas and stream chunks. Never forwarded to a provider except as a translation of what it holds. | `ChatExtensions.MEMBER` |
 | Extras | Members the gateway does not model, carried verbatim beside the typed fields at each level of a request or completion. | `extras`, `JsonValue` |
 | Fail-open / fail-closed | What a stage does when its own dependency fails: let the request through, or reject it. Declared per rule. | `FailureMode` |
 | Fallback chain | Ordered deployments tried for one request, only before the first byte reaches the client (before `Started`). | `FallbackChain` |
 | Guardrail | A rule applied to input or output, with a verdict: allow, redact or block. | `GuardrailRule`, `GuardrailVerdict` |
 | Ledger | Append-only record of the cost of every call, written from usage events. | `LedgerEntry` |
 | Local stack | The seven development services in `deploy/compose.yaml` (Postgres, Redis, Redpanda, OTel collector, Jaeger, Prometheus, Grafana) on loopback ports from `LLMGW_*_PORT`; project `llmgw` unless `COMPOSE_PROJECT_NAME` says otherwise. | `deploy/compose.yaml` |
+| Member policy | The rule an adapter holds, as data, for each member of the OpenAI request when its provider has another shape: translate, forward, ignore, ignore a default value, or reject. An unlisted member is rejected. | `AnthropicMemberPolicy`, `MemberRule` |
 | Mock provider | The deterministic provider fake on port 8090 that every test and smoke run calls instead of a real provider; OpenAI and Anthropic shapes, scenarios and a request journal under `/__mock`. | `MockProviderApplication` |
 | Model alias | The model name a client sends (`chat-default`), resolved by the team's route table. | `ModelAlias` |
-| Model resolver | Maps the model a client sent to a deployment; pass-through to the one deployment until RTE-01. | `ModelResolver` |
+| Model prefix | A configured model-name prefix that sends a model to a provider until RTE-01 replaces it (`claude-`, `mock-claude`). | `ModelPrefix`, `PrefixModelResolver` |
+| Model resolver | Maps the model a client sent to a deployment: by model prefix, else the default provider, until RTE-01. | `ModelResolver` |
+| Piece | One unit of a mock provider stream, the one `perTokenMs` and `afterPieces` count: one or more frames, each flushed alone. | `Piece` |
+| Plan part | One part of the mock provider's planned reply, rendered per provider: thinking, text or a tool call. | `PlanPart`, `CompletionPlan` |
 | Price catalog | Per-model prices for input, output and cached-input tokens, with effective dates. | `PriceCatalog` |
 | Provider | An upstream LLM API vendor (OpenAI, Anthropic, a local server). | `Provider` |
 | Provider failure | The sealed failures a provider call can end in, each one error row. | `ProviderFailure` |
+| Provider selection | Picking the adapter for a deployment: the resolver names the provider, and the routing port delegates to its adapter. A provider with no adapter is `model_not_found`. | `RoutingChatModelPort`, `ProviderSelectionProperties` |
 | Rate limit | A cap on requests or tokens per time window for a team. | `RateLimitPolicy` |
 | Request ID | The gateway-generated UUIDv7 for one call, returned in `x-request-id`; the key that ties a response, its log lines, its span and its ledger row. Never the trace ID. | `RequestId` |
 | Request journal | The mock provider's bounded, redacted log of the requests it received, with its arrival counter (`lastSeq`) and per-route, per-model counts; read over `/__mock/requests` and `/__mock/stats`. | `RequestJournal` |
@@ -36,13 +43,16 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 | Route table | A team's mapping from model aliases to deployments and the routing policy. | `RouteTable` |
 | Run | One execution of an agent version on an input. | `Run` |
 | Scenario | Per-model behaviour of the mock provider: ordered steps (each consumed by `times` requests) and then an `otherwise` behaviour (latency, error, fault, content, usage), set over `/__mock/scenarios`; `*` serves every model without its own. | `Scenario`, `Behaviour` |
+| Scripted tool call | A tool call a mock scenario declares in `content.toolCalls`, rendered in each provider's shape on both forms. | `ToolCallSpec`, `PlanPart.ToolCall` |
 | Shared container | One Testcontainers container per test JVM for a backing service, started on first use and removed by Ryuk when the JVM ends; never stopped by a test or a Spring context. | `SharedPostgres`, `SharedRedis`, `SharedRedpanda`, `SharedMockProvider` |
 | Stack check | The script that checks a running local stack: services, health, loopback ports, OTLP traces to Jaeger and metrics to Prometheus, Prometheus targets, Grafana datasources; one `PASS` or `FAIL` line per check. | `tools/smoke/stack-check.sh` |
 | Step | One unit inside a run: a model call, a tool call or an approval. | `Step` |
+| Stream decoder | The provider's part of a stream: one upstream SSE event to chunks and a state, with no threads or timers. | `StreamDecoder`, `StreamLifecycle` |
 | Stream event | The sealed values of a stream, ending in one terminal event. | `ProviderStreamEvent`, `ChatStreamEvent` |
 | Stream summary | How a stream ended and its usage, reported once. | `StreamSummary` |
 | Supervisor | Orchestration pattern where one agent decides which agent acts next. | `SupervisorPattern` |
 | Team | The tenant: owns keys, limits, budgets, routes and policies. Every request resolves to one. | `Team` |
+| Thinking block | A provider reasoning block with an opaque signature, never put in `content`. A reply carries it in `llmgw.thinking_blocks`; a client echoes it on the assistant message in a tool loop. | `HeldThinking` |
 | Tool | A registered HTTP capability an agent can call, described by a JSON schema, on an allowlisted host. | `ToolDefinition` |
 | TTFT | Time to first token: from request receipt to the first streamed chunk sent. | `ttftMs` in the end-of-stream line, until OBS-02's `ttft` metric |
 | Usage | Provider-reported token counts (input, output, cached input), or an estimate flagged as such; `estimated` when the provider omitted it. | `Usage` |

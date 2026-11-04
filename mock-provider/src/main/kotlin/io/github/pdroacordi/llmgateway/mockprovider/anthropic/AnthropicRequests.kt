@@ -21,7 +21,8 @@ data class MessagesRequest(
 
 /**
  * Reads the members of a Messages request the mock uses: `system` becomes a first turn with role `system`; `text`
- * blocks and the text inside `tool_result` blocks count; other blocks are ignored (FND-03 section 5, Generation).
+ * blocks and the text inside `tool_result` blocks count; other blocks are ignored (FND-03 section 5, Generation). A
+ * user message right after a `tool_use` turn is checked, so a badly translated conversation fails (ADR-GW-03-019).
  */
 object AnthropicRequests {
     fun messages(body: JsonNode): MessagesRequest {
@@ -37,6 +38,7 @@ object AnthropicRequests {
                     else -> reject("system", "'system' must be a string or an array of text blocks.")
                 }
             }
+        checkToolResults(messages)
         val turns = messages.mapIndexed(::turn)
         return MessagesRequest(
             model = model,
@@ -45,6 +47,45 @@ object AnthropicRequests {
             cap = cap,
         )
     }
+
+    // The handling guide: `tool_result` blocks come first in the user message that follows, one per `tool_use`.
+    private fun checkToolResults(messages: List<JsonNode>) {
+        messages.zipWithNext().forEachIndexed { index, (assistant, user) ->
+            val wanted = toolUseIds(assistant)
+            if (wanted.isNotEmpty() && user.hasRole("user")) {
+                val covered = leadingToolResults(user)
+                val param = "messages[${index + 1}].content"
+                if (!covered.containsAll(wanted)) {
+                    reject(param, "tool_use ids were found without tool_result blocks immediately after.")
+                }
+            }
+        }
+    }
+
+    private fun toolUseIds(message: JsonNode): Set<String> {
+        val content = message.member("content")?.takeIf { it.isArray && message.hasRole("assistant") }
+        return content
+            ?.values()
+            ?.filter { it.isBlockOf("tool_use") }
+            ?.mapNotNull { it.member("id")?.takeIf { id -> id.isString }?.stringValue() }
+            .orEmpty()
+            .toSet()
+    }
+
+    private fun leadingToolResults(message: JsonNode): Set<String> {
+        val content = message.member("content")?.takeIf { it.isArray } ?: return emptySet()
+        return content
+            .values()
+            .takeWhile { it.isBlockOf("tool_result") }
+            .mapNotNull { it.member("tool_use_id")?.takeIf { id -> id.isString }?.stringValue() }
+            .toSet()
+    }
+
+    private fun JsonNode.hasRole(role: String): Boolean =
+        isObject && member("role")?.takeIf { it.isString }?.stringValue() == role
+
+    private fun JsonNode.isBlockOf(type: String): Boolean =
+        isObject && member("type")?.takeIf { it.isString }?.stringValue() == type
 
     private fun turn(
         index: Int,

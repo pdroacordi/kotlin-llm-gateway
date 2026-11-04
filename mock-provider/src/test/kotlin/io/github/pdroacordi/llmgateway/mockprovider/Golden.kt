@@ -3,6 +3,8 @@ package io.github.pdroacordi.llmgateway.mockprovider
 import io.github.pdroacordi.llmgateway.mockprovider.behaviour.ContentMode
 import io.github.pdroacordi.llmgateway.mockprovider.behaviour.ResolvedContent
 import io.github.pdroacordi.llmgateway.mockprovider.behaviour.ResolvedUsage
+import io.github.pdroacordi.llmgateway.mockprovider.behaviour.ThinkingSpec
+import io.github.pdroacordi.llmgateway.mockprovider.behaviour.ToolCallSpec
 import io.github.pdroacordi.llmgateway.mockprovider.generation.CompletionPlan
 import io.github.pdroacordi.llmgateway.mockprovider.generation.CompletionPlanner
 import io.github.pdroacordi.llmgateway.mockprovider.generation.Conversation
@@ -29,6 +31,25 @@ object Golden {
             Conversation(model, listOf(Turn("user", PROMPT))),
             null,
             ResolvedContent(ContentMode.FIXED, TEXT, 16),
+            ResolvedUsage(omit = false, cachedTokens = 0, cacheCreationTokens = 0),
+        )
+
+    /** Thinking, text and two tool calls, the second with no input: the golden files of ADR-GW-03-019. */
+    fun toolPlan(model: String): CompletionPlan =
+        CompletionPlanner(TextGenerator()).plan(
+            Conversation(model, listOf(Turn("user", PROMPT))),
+            null,
+            ResolvedContent(
+                ContentMode.FIXED,
+                "Checking.",
+                16,
+                toolCalls =
+                    listOf(
+                        ToolCallSpec("toolu_1", "get_weather", """{"city":"Paris"}""", 8),
+                        ToolCallSpec(null, "get_time", "{}"),
+                    ),
+                thinking = listOf(ThinkingSpec(signature = "sig-1"), ThinkingSpec(redacted = "opaque-1")),
+            ),
             ResolvedUsage(omit = false, cachedTokens = 0, cacheCreationTokens = 0),
         )
 

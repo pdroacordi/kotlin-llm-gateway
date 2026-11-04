@@ -32,6 +32,23 @@ class OpenAiRequestWriterTest {
     }
 
     @Test
+    fun `the gateway's own member on a message never reaches the provider, other extras do`() {
+        val extras =
+            JsonValue.Object(
+                mapOf(
+                    "llmgw" to JsonValue.Object(mapOf("thinking_blocks" to JsonValue.Array(emptyList()))),
+                    "name" to JsonValue.Text("a"),
+                ),
+            )
+        val json = written(ChatMessage(Role("assistant"), MessageContent.Text("Hi"), extras))
+
+        assertEquals(
+            """{"model":"provider-model","messages":[{"role":"assistant","content":"Hi","name":"a"}]}""",
+            json,
+        )
+    }
+
+    @Test
     fun `model comes from the deployment, not from the request`() {
         val json = written(ChatMessage(Role("user"), MessageContent.Text("Hi")))
 
@@ -55,6 +72,22 @@ class OpenAiRequestWriterTest {
         assertEquals(
             """{"model":"provider-model","messages":[{"role":"user","content":null}],""" +
                 """"x_future":{"a":[1,null]},"seed":9007199254740993,"temperature":0.7}""",
+            written(ChatMessage(Role("user"), null), extras),
+        )
+    }
+
+    @Test
+    fun `the gateway's own member at the top level never reaches the provider, other extras do`() {
+        val extras =
+            JsonValue.Object(
+                linkedMapOf(
+                    "llmgw" to JsonValue.Object(mapOf("thinking_blocks" to JsonValue.Array(emptyList()))),
+                    "temperature" to JsonValue.Number("0.7"),
+                ),
+            )
+
+        assertEquals(
+            """{"model":"provider-model","messages":[{"role":"user","content":null}],"temperature":0.7}""",
             written(ChatMessage(Role("user"), null), extras),
         )
     }

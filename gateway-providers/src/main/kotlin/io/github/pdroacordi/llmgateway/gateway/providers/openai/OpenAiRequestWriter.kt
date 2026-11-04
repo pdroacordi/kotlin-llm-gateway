@@ -1,6 +1,7 @@
 package io.github.pdroacordi.llmgateway.gateway.providers.openai
 
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatCall
+import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatExtensions
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatMessage
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ContentPart
 import io.github.pdroacordi.llmgateway.gateway.core.chat.MessageContent
@@ -20,7 +21,7 @@ internal object OpenAiRequestWriter {
         body.put("model", call.deployment.model.value)
         val messages = body.putArray("messages")
         call.request.messages.forEach { messages.add(message(it, nodes)) }
-        return body.withExtras(call.request.extras, nodes)
+        return body.withExtras(call.request.extras.withoutExtension(), nodes)
     }
 
     /** `include_usage` is always true upstream, whatever the client asked: the gateway needs it (ADR-GW-02-005). */
@@ -43,8 +44,12 @@ internal object OpenAiRequestWriter {
         val node = nodes.objectNode()
         node.put("role", message.role.value)
         node.set("content", content(message.content, nodes))
-        return node.withExtras(message.extras, nodes)
+        return node.withExtras(message.extras.withoutExtension(), nodes)
     }
+
+    // The gateway's own member: OpenAI does not know it (ADR-020).
+    private fun JsonValue.Object.withoutExtension(): JsonValue.Object =
+        JsonValue.Object(members - ChatExtensions.MEMBER)
 
     private fun content(
         content: MessageContent?,

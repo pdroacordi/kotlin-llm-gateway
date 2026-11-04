@@ -121,7 +121,7 @@ class Serving(
                 val faultAt = behaviour.fault?.let { minOf(it.afterPieces, reply.pieces.size) } ?: reply.pieces.size
                 record.piecesSent = 0
                 for (index in 0 until faultAt) {
-                    emit(reply.pieces[index])
+                    reply.pieces[index].frames.forEach { emit(it) }
                     record.piecesSent = index + 1
                     pause(latency.perTokenMs, latency.jitterMs)
                 }

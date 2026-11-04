@@ -2,6 +2,7 @@ package io.github.pdroacordi.llmgateway.gateway.providers.openai
 
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.github.pdroacordi.llmgateway.gateway.providers.json.exactTreeReader
+import io.github.pdroacordi.llmgateway.gateway.providers.upstream.ProviderErrorFields
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull

@@ -93,6 +93,10 @@ val ERROR_HANDLING_TYPES: List<String> =
 // The JsonNode to JsonValue conversion: it holds no provider type, and the edge needs it (ADR-GW-01-002).
 val ADAPTER_SHARED_PACKAGES: List<String> = listOf("$BASE_PACKAGE.gateway.providers.json")
 
+/** One per provider; a new adapter adds its package here. */
+val PROVIDER_ADAPTER_PACKAGES: List<String> =
+    listOf("$BASE_PACKAGE.gateway.providers.openai", "$BASE_PACKAGE.gateway.providers.anthropic")
+
 private const val FIXTURES_SOURCE_SET = "fixtures"
 private const val MAIN_SOURCE_SET = "main"
 private const val INTEGRATION_TEST_SOURCE_SET = "integrationTest"
@@ -301,6 +305,22 @@ fun adaptersReferencedOnlyFromWiring(
     return others.flatMap { forbiddenReferences(it, "ARCH-12", "ADR-GW-01-010", isAdapter) } +
         wiring.flatMap { exportedAdapterAliases(it, isAdapter) }
 }
+
+/** ARCH-13: a provider's adapter never names another's; what they share lives in `.upstream` (ADR-GW-03-018). */
+fun providerAdaptersDoNotNameEachOther(files: List<ModuleFile>): List<String> =
+    files.flatMap { file ->
+        val own =
+            PROVIDER_ADAPTER_PACKAGES.firstOrNull {
+                file.file.packagee
+                    ?.name
+                    ?.isInPackage(it) == true
+            }
+        if (own == null) {
+            emptyList()
+        } else {
+            forbiddenReferences(file, "ARCH-13", "ADR-GW-03-018", inAnyOf(PROVIDER_ADAPTER_PACKAGES - own))
+        }
+    }
 
 /** Every Kotlin file of the repository except fixtures, `build-logic/` and generated code under `build/`. */
 object ProductionScope {

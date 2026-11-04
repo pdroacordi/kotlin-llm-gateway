@@ -38,6 +38,31 @@ class StreamTallyTest {
     }
 
     @Test
+    fun `a failure while an adapter holds the first chunk starts nothing, so it can still be a status`() {
+        val tally = tally()
+        val failure = ProviderFailure.ProviderUnavailable(null)
+
+        assertEquals(listOf(ChatStreamEvent.Failed(failure)), tally.on(ProviderStreamEvent.Failed(failure)))
+        assertFalse(tally.summary(cancelled = false).started)
+    }
+
+    @Test
+    fun `an empty answer whose first chunk is the finish chunk starts and completes`() {
+        val finish =
+            ChatChunk(
+                "chatcmpl-1",
+                CREATED,
+                MODEL,
+                listOf(ChunkChoice(0, ChunkDelta(), FinishReason("stop"))),
+            )
+        val events = tally().feed(ProviderStreamEvent.Chunk(finish), usageChunk(), ProviderStreamEvent.Completed)
+
+        assertEquals(ChatStreamEvent.Started(DEPLOYMENT), events.first())
+        assertEquals(ChatStreamEvent.Chunk(finish), events[1])
+        assertEquals(ChatStreamEvent.Completed(PROVIDER_USAGE), events.last())
+    }
+
+    @Test
     fun `Started comes once`() {
         val events = tally().feed(content("a"), content("b"), content("c"))
 

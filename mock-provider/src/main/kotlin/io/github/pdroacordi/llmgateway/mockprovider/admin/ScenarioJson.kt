@@ -20,6 +20,23 @@ import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.databind.node.ObjectNode
 
+/** [node] must be an object whose members are all in [allowed]; an unknown one is named as [prefix] + name. */
+internal fun obj(
+    node: JsonNode,
+    path: String,
+    allowed: Set<String>,
+    prefix: String,
+): JsonNode {
+    if (!node.isObject) reject(path, "'$path' must be a JSON object.")
+    node.propertyNames().firstOrNull { it !in allowed }?.let {
+        reject(
+            "$prefix$it",
+            "Unknown member '$prefix$it'.",
+        )
+    }
+    return node
+}
+
 /**
  * The `Scenario` JSON of `/__mock/scenarios` (FND-03 section 4). Strict: an unknown member, a value out of range or a
  * wrong type is a 400 whose `param` is the member's path (`steps[0].error.status`), so a typo in a test fails loudly.
@@ -29,6 +46,7 @@ class ScenarioJson(
     private val maxHoldMs: Long,
 ) {
     private val writer = ScenarioJsonWriter(mapper)
+    private val scripted = ScriptedContentJson(mapper)
 
     fun parse(node: JsonNode): Scenario {
         val root = obj(node, "scenario", setOf("steps", "otherwise"), prefix = "")
@@ -141,7 +159,7 @@ class ScenarioJson(
         node: JsonNode,
         path: String,
     ): ContentSpec {
-        obj(node, path, setOf("mode", "text", "completionTokens"), "$path.")
+        obj(node, path, CONTENT_MEMBERS, "$path.")
         val mode =
             node.optString("mode", "$path.mode")?.let { wire ->
                 ContentMode.fromWire(wire)
@@ -152,7 +170,14 @@ class ScenarioJson(
             }
         val text = node.optString("text", "$path.text")
         if (mode == ContentMode.FIXED && text == null) reject("$path.text", "'$path.text' is required with mode fixed.")
-        return ContentSpec(mode, text, node.optInt("completionTokens", COMPLETION_TOKENS, "$path.completionTokens"))
+        return ContentSpec(
+            mode = mode,
+            text = text,
+            completionTokens = node.optInt("completionTokens", COMPLETION_TOKENS, "$path.completionTokens"),
+            toolCalls = node.member("toolCalls")?.let { scripted.toolCalls(it, "$path.toolCalls") },
+            finish = scripted.finish(node, "$path.finish"),
+            thinking = node.member("thinking")?.let { scripted.thinking(it, "$path.thinking") },
+        )
     }
 
     private fun usage(
@@ -175,27 +200,11 @@ class ScenarioJson(
         )
     }
 
-    /** [node] must be an object whose members are all in [allowed]; an unknown one is named as [prefix] + name. */
-    private fun obj(
-        node: JsonNode,
-        path: String,
-        allowed: Set<String>,
-        prefix: String,
-    ): JsonNode {
-        if (!node.isObject) reject(path, "'$path' must be a JSON object.")
-        node.propertyNames().firstOrNull { it !in allowed }?.let {
-            reject(
-                "$prefix$it",
-                "Unknown member '$prefix$it'.",
-            )
-        }
-        return node
-    }
-
     private companion object {
         val BEHAVIOUR_MEMBERS = setOf("latency", "error", "fault", "content", "usage")
         val ERROR_MEMBERS =
             setOf("status", "type", "code", "message", "param", "retryAfterSeconds", "retryAfterMs", "headers")
+        val CONTENT_MEMBERS = setOf("mode", "text", "completionTokens", "toolCalls", "finish", "thinking")
         val STATUSES = 400..599
 
         // Steps are stored unexpanded; the caps keep a typo from becoming a huge scenario (FND-03 systems entry).

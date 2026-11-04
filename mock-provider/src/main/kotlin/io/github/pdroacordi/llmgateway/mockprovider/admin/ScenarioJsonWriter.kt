@@ -5,6 +5,7 @@ import io.github.pdroacordi.llmgateway.mockprovider.behaviour.ContentSpec
 import io.github.pdroacordi.llmgateway.mockprovider.behaviour.InjectedError
 import io.github.pdroacordi.llmgateway.mockprovider.behaviour.Latency
 import io.github.pdroacordi.llmgateway.mockprovider.behaviour.Scenario
+import io.github.pdroacordi.llmgateway.mockprovider.behaviour.ToolCallSpec
 import io.github.pdroacordi.llmgateway.mockprovider.behaviour.UsageSpec
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.databind.node.ObjectNode
@@ -63,6 +64,29 @@ internal class ScenarioJsonWriter(
         content.mode?.let { target.put("mode", it.wire) }
         content.text?.let { target.put("text", it) }
         content.completionTokens?.let { target.put("completionTokens", it) }
+        content.toolCalls?.let { calls ->
+            val array = target.putArray("toolCalls")
+            calls.forEach { toolCall(array.addObject(), it) }
+        }
+        content.finish?.let { target.put("finish", it.wire) }
+        content.thinking?.let { blocks ->
+            val array = target.putArray("thinking")
+            blocks.forEach { block ->
+                val item = array.addObject()
+                block.signature?.let { item.put("signature", it) }
+                block.redacted?.let { item.put("redacted", it) }
+            }
+        }
+    }
+
+    private fun toolCall(
+        target: ObjectNode,
+        call: ToolCallSpec,
+    ) {
+        call.id?.let { target.put("id", it) }
+        target.put("name", call.name)
+        target.set("input", mapper.readTree(call.inputJson))
+        call.chunkChars?.let { target.put("chunkChars", it) }
     }
 
     private fun usage(

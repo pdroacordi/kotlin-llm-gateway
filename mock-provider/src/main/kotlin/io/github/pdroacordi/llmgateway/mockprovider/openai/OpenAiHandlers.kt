@@ -47,7 +47,7 @@ class OpenAiHandlers(
                 Reply.Json(
                     renderer.completion(seq, created, chat.model, plan),
                     OpenAiRenderer.MALFORMED_BODY,
-                    plan.pieces.size,
+                    plan.pieceCount,
                 )
             }
         return generation.serving.respond(record, behaviour, reply)

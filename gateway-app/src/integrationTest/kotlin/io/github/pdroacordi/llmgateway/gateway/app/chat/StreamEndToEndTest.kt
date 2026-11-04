@@ -1,5 +1,6 @@
 package io.github.pdroacordi.llmgateway.gateway.app.chat
 
+import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatExtensions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -86,7 +87,7 @@ class StreamEndToEndTest : MockBackedTest() {
 
         assertTrue(last.get("choices").isEmpty)
         assertTrue(last.at("/usage/prompt_tokens").intValue() > 0)
-        assertFalse(last.has(ChatChunkWriter.EXTENSION_MEMBER)) { last.toString() }
+        assertFalse(last.has(ChatExtensions.MEMBER)) { last.toString() }
     }
 
     @Test
@@ -98,7 +99,7 @@ class StreamEndToEndTest : MockBackedTest() {
         val last = chunks(stream).last()
         assertTrue(last.get("choices").isEmpty) { last.toString() }
         assertEquals(2, last.at("/usage/completion_tokens").intValue())
-        assertTrue(last.at("/${ChatChunkWriter.EXTENSION_MEMBER}/usage_estimated").booleanValue())
+        assertTrue(last.at("/${ChatExtensions.MEMBER}/usage_estimated").booleanValue())
         assertEquals("data: [DONE]", stream.frames.last())
     }
 
@@ -109,7 +110,7 @@ class StreamEndToEndTest : MockBackedTest() {
         val chunks = chunks(rawStream(asking(includeUsage = false)))
 
         assertTrue(chunks.none { it.get("choices").isEmpty })
-        assertTrue(chunks.none { it.has(ChatChunkWriter.EXTENSION_MEMBER) })
+        assertTrue(chunks.none { it.has(ChatExtensions.MEMBER) })
     }
 
     @Test

@@ -31,7 +31,7 @@ class ErrorBodies(
             return ErrorBody(
                 status = error.status,
                 type = error.type ?: defaults.type,
-                code = if (api == ProviderApi.OPENAI) error.code ?: defaults.code else null,
+                code = error.code ?: defaults.code,
                 message = error.message ?: defaults.message,
                 param = error.param,
             )

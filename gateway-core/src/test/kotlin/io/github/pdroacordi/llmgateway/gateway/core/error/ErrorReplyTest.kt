@@ -253,6 +253,19 @@ class ErrorReplyTest {
                     ErrorReply(422, REJECTED, INVALID, null, "upstream_rejected_request"),
                 ),
                 Arguments.of(
+                    named(
+                        "a member the provider cannot honour",
+                        ProviderFailure.UnsupportedByProvider("unsupported_parameter", "seed"),
+                    ),
+                    ErrorReply(
+                        400,
+                        "The selected model's provider does not support this request; see the code and param members.",
+                        INVALID,
+                        "seed",
+                        "unsupported_parameter",
+                    ),
+                ),
+                Arguments.of(
                     named("upstream auth failed", ProviderFailure.UpstreamAuthFailed),
                     ErrorReply(
                         502,

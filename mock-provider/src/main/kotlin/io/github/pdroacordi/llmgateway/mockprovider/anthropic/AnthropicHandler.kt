@@ -39,7 +39,7 @@ class AnthropicHandler(
                 Reply.Json(
                     renderer.message(seq, messages.model, plan),
                     AnthropicRenderer.MALFORMED_BODY,
-                    plan.pieces.size,
+                    plan.pieceCount,
                 )
             }
         return generation.serving.respond(record, behaviour, reply)

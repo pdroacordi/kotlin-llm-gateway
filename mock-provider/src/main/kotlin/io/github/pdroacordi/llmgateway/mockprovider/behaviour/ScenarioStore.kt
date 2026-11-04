@@ -74,6 +74,9 @@ class ScenarioStore(
                     mode = levels.firstOf { it.content?.mode } ?: ContentMode.LOREM,
                     text = levels.firstOf { it.content?.text },
                     completionTokens = levels.firstOf { it.content?.completionTokens } ?: DEFAULT_COMPLETION_TOKENS,
+                    toolCalls = levels.firstOf { it.content?.toolCalls }.orEmpty(),
+                    finish = levels.firstOf { it.content?.finish },
+                    thinking = levels.firstOf { it.content?.thinking }.orEmpty(),
                 ),
             usage =
                 ResolvedUsage(

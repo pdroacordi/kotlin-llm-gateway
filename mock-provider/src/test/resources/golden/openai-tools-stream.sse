@@ -1,0 +1,18 @@
+data: {"id":"chatcmpl-mock-000000000001","object":"chat.completion.chunk","created":1793750400,"model":"mock-chat","system_fingerprint":"fp_mock","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-000000000001","object":"chat.completion.chunk","created":1793750400,"model":"mock-chat","system_fingerprint":"fp_mock","choices":[{"index":0,"delta":{"content":"Checking"},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-000000000001","object":"chat.completion.chunk","created":1793750400,"model":"mock-chat","system_fingerprint":"fp_mock","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-000000000001","object":"chat.completion.chunk","created":1793750400,"model":"mock-chat","system_fingerprint":"fp_mock","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"toolu_1","type":"function","function":{"name":"get_weather","arguments":""}}]},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-000000000001","object":"chat.completion.chunk","created":1793750400,"model":"mock-chat","system_fingerprint":"fp_mock","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":"}}]},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-000000000001","object":"chat.completion.chunk","created":1793750400,"model":"mock-chat","system_fingerprint":"fp_mock","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"Paris\"}"}}]},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-000000000001","object":"chat.completion.chunk","created":1793750400,"model":"mock-chat","system_fingerprint":"fp_mock","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_mock_1_1","type":"function","function":{"name":"get_time","arguments":"{}"}}]},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-000000000001","object":"chat.completion.chunk","created":1793750400,"model":"mock-chat","system_fingerprint":"fp_mock","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+

@@ -8,7 +8,10 @@ import io.github.pdroacordi.llmgateway.mockprovider.behaviour.FaultKind
 import io.github.pdroacordi.llmgateway.mockprovider.behaviour.InjectedError
 import io.github.pdroacordi.llmgateway.mockprovider.behaviour.Latency
 import io.github.pdroacordi.llmgateway.mockprovider.behaviour.Scenario
+import io.github.pdroacordi.llmgateway.mockprovider.behaviour.ScriptedFinish
 import io.github.pdroacordi.llmgateway.mockprovider.behaviour.Step
+import io.github.pdroacordi.llmgateway.mockprovider.behaviour.ThinkingSpec
+import io.github.pdroacordi.llmgateway.mockprovider.behaviour.ToolCallSpec
 import io.github.pdroacordi.llmgateway.mockprovider.behaviour.UsageSpec
 import io.github.pdroacordi.llmgateway.mockprovider.error.MockRejection
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -174,4 +177,60 @@ class ScenarioJsonTest {
     }
 
     private fun tree(text: String) = mapper.readTree(text.trimIndent())
+
+    @Test
+    fun `tool calls, finish and thinking parse and write back unchanged`() {
+        val text =
+            """{"otherwise":{"content":{"mode":"fixed","text":"x","toolCalls":[{"id":"t_1","name":"get",
+            "input":{"city":"Paris","n":1},"chunkChars":3}],"finish":"refusal",
+            "thinking":[{"signature":"s"},{"redacted":"r"}]}}}"""
+        val scenario = json.parse(tree(text))
+        val content = checkNotNull(scenario.otherwise?.content)
+
+        assertEquals(listOf(ToolCallSpec("t_1", "get", """{"city":"Paris","n":1}""", 3)), content.toolCalls)
+        assertEquals(ScriptedFinish.REFUSAL, content.finish)
+        assertEquals(listOf(ThinkingSpec("s"), ThinkingSpec(redacted = "r")), content.thinking)
+        assertEquals(scenario, json.parse(json.write(scenario)))
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+        delimiter = '|',
+        value = [
+            """{"toolCalls":{}} | toolCalls""",
+            """{"toolCalls":[{"input":{}}]} | toolCalls[0].name""",
+            """{"toolCalls":[{"name":"a b","input":{}}]} | toolCalls[0].name""",
+            """{"toolCalls":[{"name":"a"}]} | toolCalls[0].input""",
+            """{"toolCalls":[{"name":"a","input":[]}]} | toolCalls[0].input""",
+            """{"toolCalls":[{"name":"a","input":{},"id":"b c"}]} | toolCalls[0].id""",
+            """{"toolCalls":[{"name":"a","input":{},"chunkChars":0}]} | toolCalls[0].chunkChars""",
+            """{"toolCalls":[{"name":"a","input":{},"chunkChars":4097}]} | toolCalls[0].chunkChars""",
+            """{"toolCalls":[{"name":"a","input":{},"x":1}]} | toolCalls[0].x""",
+            """{"finish":"stop"} | finish""",
+            """{"thinking":{}} | thinking""",
+            """{"thinking":[{}]} | thinking[0]""",
+            """{"thinking":[{"signature":""}]} | thinking[0]""",
+            """{"thinking":[{"signature":"a","redacted":"b"}]} | thinking[0]""",
+            """{"thinking":[{"x":"a"}]} | thinking[0].x""",
+        ],
+    )
+    fun `a scripted content out of bounds names its member`(
+        content: String,
+        param: String,
+    ) {
+        val rejection = assertThrows<MockRejection> { json.parse(tree("""{"otherwise":{"content":$content}}""")) }
+
+        assertEquals("otherwise.content.$param", rejection.param)
+    }
+
+    @Test
+    fun `at most 64 tool calls and 16 thinking blocks`() {
+        val calls = List(65) { """{"name":"a","input":{}}""" }.joinToString(",")
+        val blocks = List(17) { """{"signature":"s"}""" }.joinToString(",")
+        val tooManyCalls = tree("""{"otherwise":{"content":{"toolCalls":[$calls]}}}""")
+        val tooManyBlocks = tree("""{"otherwise":{"content":{"thinking":[$blocks]}}}""")
+
+        assertEquals("otherwise.content.toolCalls", assertThrows<MockRejection> { json.parse(tooManyCalls) }.param)
+        assertEquals("otherwise.content.thinking", assertThrows<MockRejection> { json.parse(tooManyBlocks) }.param)
+    }
 }

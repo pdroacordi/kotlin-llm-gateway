@@ -12,4 +12,9 @@ class AdapterRulesTest {
     fun `ARCH-12 an app's main code names an adapter only in its config package`() {
         assertNoViolations(adaptersReferencedOnlyFromWiring(ProductionScope.files))
     }
+
+    @Test
+    fun `ARCH-13 a provider's adapter does not name another provider's`() {
+        assertNoViolations(providerAdaptersDoNotNameEachOther(ProductionScope.files))
+    }
 }

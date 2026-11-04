@@ -2,44 +2,12 @@ package io.github.pdroacordi.llmgateway.gateway.providers.openai
 
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.github.pdroacordi.llmgateway.gateway.providers.json.readTreeOrNull
+import io.github.pdroacordi.llmgateway.gateway.providers.upstream.ProviderErrorFields
+import io.github.pdroacordi.llmgateway.gateway.providers.upstream.RetryAfter
+import io.github.pdroacordi.llmgateway.gateway.providers.upstream.StreamRefusals
 import org.springframework.http.HttpHeaders
-import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectReader
 import java.time.Instant
-
-/** The machine-readable members of a provider error, each null unless it passed the character check. */
-internal data class ProviderErrorFields(
-    val code: String?,
-    val type: String?,
-    val param: String?,
-) {
-    companion object {
-        val NONE = ProviderErrorFields(null, null, null)
-
-        // Tight enough that neither can carry a sentence (GW-01 section 4).
-        private val CODE = Regex("""[a-z0-9_.-]{1,64}""")
-        private val PARAM = Regex("""[A-Za-z0-9_.\[\]-]{1,128}""")
-
-        /** [error] is the provider's `error` member; anything but an object has no fields. */
-        fun of(error: JsonNode): ProviderErrorFields {
-            if (!error.isObject) return NONE
-            return ProviderErrorFields(
-                code = error.safeText("code", CODE),
-                type = error.safeText("type", CODE),
-                param = error.safeText("param", PARAM),
-            )
-        }
-
-        private fun JsonNode.safeText(
-            name: String,
-            allowed: Regex,
-        ): String? =
-            get(name)
-                ?.takeIf { it.isString }
-                ?.stringValue()
-                ?.takeIf { allowed.matches(it) }
-    }
-}
 
 /**
  * A provider's status, headers and body to a [ProviderFailure]: the upstream table of GW-01 section 4. The provider's
@@ -47,8 +15,8 @@ internal data class ProviderErrorFields(
  */
 internal class OpenAiFailureClassifier(
     private val trees: ObjectReader,
-) {
-    fun classify(
+) : StreamRefusals {
+    override fun classify(
         status: Int,
         headers: HttpHeaders,
         body: ByteArray,
@@ -91,7 +59,7 @@ internal class OpenAiFailureClassifier(
     }
 
     /** Tolerates a non-JSON body, such as a proxy's HTML 502. */
-    fun errorFields(body: ByteArray): ProviderErrorFields =
+    override fun errorFields(body: ByteArray): ProviderErrorFields =
         trees.readTreeOrNull(body)?.get("error")?.let(ProviderErrorFields::of) ?: ProviderErrorFields.NONE
 
     /** GW-02 section 4. OpenAI documents no in-band shape, so this table is the gateway's reading of the SDKs. */

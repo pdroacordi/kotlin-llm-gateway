@@ -15,6 +15,8 @@ import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.github.pdroacordi.llmgateway.gateway.core.json.JsonValue
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
 import io.github.pdroacordi.llmgateway.gateway.providers.ApiKey
+import io.github.pdroacordi.llmgateway.gateway.providers.upstream.PoolConfig
+import io.github.pdroacordi.llmgateway.gateway.providers.upstream.StreamConfig
 import io.github.pdroacordi.llmgateway.testsupport.SharedMockProvider
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers

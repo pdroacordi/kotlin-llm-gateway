@@ -139,4 +139,31 @@ class AnthropicMessagesIntegrationTest {
         assertTrue("usage" !in client.messages(messagesBody("x")).bodyText())
         assertTrue("usage" !in client.messages(messagesBody("x", extra = ""","stream":true""")).bodyText())
     }
+
+    @Test
+    fun `a fault at zero pieces after a thinking prefix comes before any content`() {
+        val scenario =
+            """{"otherwise":{"content":{"mode":"fixed","text":"","thinking":[{"signature":"s"}],
+            "toolCalls":[{"name":"get","input":{"a":1},"chunkChars":3}]},
+            "fault":{"kind":"stream_error","afterPieces":0}}}"""
+        client.putScenario("mock-claude", scenario)
+
+        val body = client.messages(messagesBody("Hi", extra = ""","stream":true""")).bodyText()
+
+        assertTrue("signature_delta" in body) { body }
+        assertTrue("event: error" in body) { body }
+        assertTrue("\"a\":1" !in body) { body }
+    }
+
+    @Test
+    fun `a conversation that leaves a tool_use unanswered is a 400 in Anthropic's shape`() {
+        val body =
+            """{"model":"mock-claude","max_tokens":8,"messages":[
+            {"role":"assistant","content":[{"type":"tool_use","id":"a","name":"n","input":{}}]},
+            {"role":"user","content":"no result"}]}"""
+        val result = client.messages(body)
+
+        assertEquals(400, result.status.value())
+        assertEquals("invalid_request_error", result.json<String>("$.error.type"))
+    }
 }

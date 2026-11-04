@@ -20,15 +20,18 @@ import java.time.Duration
  * recorded in the GW-02 log.
  */
 @ExtendWith(OutputCaptureExtension::class)
-class StreamBufferLeakIntegrationTest : MockBackedTest() {
+class StreamBufferLeakIntegrationTest : AnthropicBackedTest() {
     private val client by lazy { WebClient.create("http://127.0.0.1:$port") }
 
-    private fun stream(frames: Long): Flux<ByteArray> =
+    private fun stream(
+        frames: Long,
+        body: String = STREAM,
+    ): Flux<ByteArray> =
         client
             .post()
             .uri(ROUTE)
             .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(STREAM.encodeToByteArray())
+            .bodyValue(body.encodeToByteArray())
             .exchangeToFlux { it.bodyToFlux(ByteArray::class.java).take(frames) }
 
     @Test
@@ -51,6 +54,31 @@ class StreamBufferLeakIntegrationTest : MockBackedTest() {
             Flux
                 .range(0, CONCURRENCY)
                 .flatMap({ stream(FRAMES).collectList() }, CONCURRENCY)
+                .blockLast(BLOCK_LIMIT)
+        }
+        assertFalse("LEAK:" in output.all) { output.all.lines().first { "LEAK:" in it } }
+    }
+
+    @Test
+    fun `500 Anthropic streams cancelled mid-flight leak no pooled buffer`(output: CapturedOutput) {
+        val words = "word ".repeat(WORDS)
+        claudeScenario("""{"otherwise":{"latency":{"perTokenMs":5},"content":{"mode":"fixed","text":"$words"}}}""")
+
+        val cancelled =
+            Flux
+                .range(0, CANCELLED)
+                .flatMap({ stream(FRAMES, CLAUDE_STREAM).collectList() }, CONCURRENCY)
+                .collectList()
+                .block(BLOCK_LIMIT)
+                .orEmpty()
+
+        assertEquals(CANCELLED, cancelled.size)
+        repeat(ROUNDS) {
+            System.gc()
+            // ResourceLeakDetector drains its queue on the next tracked allocation.
+            Flux
+                .range(0, CONCURRENCY)
+                .flatMap({ stream(FRAMES, CLAUDE_STREAM).collectList() }, CONCURRENCY)
                 .blockLast(BLOCK_LIMIT)
         }
         assertFalse("LEAK:" in output.all) { output.all.lines().first { "LEAK:" in it } }

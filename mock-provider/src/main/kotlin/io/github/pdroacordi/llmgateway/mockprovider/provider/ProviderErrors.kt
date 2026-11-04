@@ -14,7 +14,7 @@ enum class ProviderApi {
     }
 }
 
-/** [code] is OpenAI's; Anthropic bodies have none. */
+/** [code] is OpenAI's; an Anthropic body has one only if a scenario sets it. */
 data class ErrorDefaults(
     val type: String,
     val code: String?,

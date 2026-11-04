@@ -7,6 +7,7 @@ import io.github.pdroacordi.llmgateway.gateway.core.chat.FinishReason
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ModelName
 import io.github.pdroacordi.llmgateway.gateway.providers.json.extrasExcept
 import io.github.pdroacordi.llmgateway.gateway.providers.json.readTreeOrNull
+import io.github.pdroacordi.llmgateway.gateway.providers.upstream.ProviderErrorFields
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectReader
 

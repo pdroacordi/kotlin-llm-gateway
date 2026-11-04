@@ -25,14 +25,14 @@ class OpenAiPropertiesTest {
             requestTimeout = Duration.ofSeconds(300),
             maxResponseSize = DataSize.ofMegabytes(16),
             pool =
-                OpenAiProperties.Pool(
+                PoolProperties(
                     maxConnections = 500,
                     pendingAcquireTimeout = Duration.ofSeconds(5),
                     maxIdleTime = Duration.ofSeconds(30),
                     maxLifeTime = Duration.ofMinutes(5),
                 ),
             stream =
-                OpenAiProperties.Stream(
+                StreamProperties(
                     firstByteTimeout = Duration.ofSeconds(120),
                     idleTimeout = Duration.ofSeconds(60),
                     totalTimeout = Duration.ofMinutes(30),

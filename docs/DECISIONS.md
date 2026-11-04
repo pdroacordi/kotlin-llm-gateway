@@ -458,6 +458,9 @@ Full options and reasoning in [GW-01](specs/GW-01-chat-completions.md), ADR-GW-0
 - The error envelope and its codec path are unchanged.
 - Readers and writers are explicit code, unit-tested without Spring; no reflection runs on the hot path.
 
+### Revision (2026-11-04)
+"A member moves from `extras` to a typed field when an item must read it" now means: when `gateway-core` or the app must read it. An adapter that translates a member reads it from `extras`, which this ADR already defines as the gateway API's members in the OpenAI shape. This replaces GW-01's expectation that GW-03 promotes the sampling members. Reason: promotion would give each member three states (typed, `null`, wrong type left in `extras`) and rewrite `OpenAiRequestWriter` for members no core policy reads. RL-02 reading `max_tokens` would be the first promotion. Options and reasoning in [GW-03](specs/GW-03-anthropic-adapter.md), ADR-GW-03-017.
+
 ---
 
 <a id="adr-019"></a>
@@ -492,6 +495,39 @@ Full options and reasoning in [GW-02](specs/GW-02-sse-streaming.md), ADR-GW-02-0
 - GRD-05 and CACHE-04 work on `Flow<ChatStreamEvent>`.
 - An access log shows 200 for a stream that failed after commit; OBS-02 counts failures from `StreamSummary`.
 - What OpenAI itself sends after an in-band error has no public document; a `live` call can check it.
+
+---
+
+<a id="adr-020"></a>
+## ADR-020: Translation contract for an adapter whose provider has a different shape
+
+- **Status:** Accepted
+- **Date:** 2026-11-04
+
+### Context
+GW-03 is the first adapter that cannot forward `extras`. RTE-02, RL-02, COST-01, COST-02, AGT-02 and GW-06 all depend on what such an adapter does with a member it cannot honour, what `inputTokens` means, when a translated stream commits, and how provider state with no OpenAI equivalent survives a client round trip. ADR-018 says only that the adapter declares what it does.
+
+### Options
+Full options and reasoning in [GW-03](specs/GW-03-anthropic-adapter.md), ADR-GW-03-005, -007, -008 and -011. In short:
+- A member that cannot be honoured: drop it silently; forward it and relay the refusal; 400 from the gateway.
+- Failure type: reuse `RejectedByProvider`; a new variant.
+- Usage: report the provider's input count; normalise to OpenAI's meaning.
+- Stream start: mirror OpenAI's role chunk at once; hold the first chunk until real output.
+- Provider state with no OpenAI member: drop it; keep it server-side; return it in an extension member the client echoes.
+
+### Decision
+- **Members:** every member of the OpenAI request has an explicit rule in the adapter, held as data: translate, forward, ignore, or reject. A member that would change the output and cannot be honoured is a 400 with no upstream call; a value equal to OpenAI's documented default counts as absent; an unknown member is rejected.
+- **Failure:** `ProviderFailure.UnsupportedByProvider(code, param)`, a 400 `invalid_request_error`. Nothing was sent, so RTE-02 may try another deployment.
+- **Usage:** `inputTokens` is every input token the provider processed, cached and cache-write included, and `cachedInputTokens` a subset, read at the discounted rate. Provider detail objects go in `Usage.extras` in the OpenAI shape.
+- **Stream:** a translated stream emits no chunk until it has output to show, so an error before that is a real status and the fallback window stays open.
+- **Extension:** provider state a client must carry between requests travels in the `llmgw` member of a message, the name of [ADR-019](#adr-019). No adapter forwards `llmgw` to a provider, except by translating what it holds for its own provider.
+
+### Consequences
+- ADR-004's "passed on where the provider supports them" means, on such an adapter, "has a rule".
+- The new variant adds one row to `toReply`, and a new OpenAI member is a 400 on the Anthropic path until it has a rule.
+- COST-01 prices from one meaning of `inputTokens`, and needs the extension count for cache writes.
+- AGT-02 echoes assistant messages whole; a client that rebuilds them from typed fields loses `llmgw`.
+- `llmgw` never reaches OpenAI: `OpenAiRequestWriter` drops it at the top level of the request and from each message. On the Anthropic path a message's `llmgw` is translated, and a top-level `llmgw` has no rule, so it is a 400 `unsupported_parameter` with no upstream call.
 
 <!--
 Template for a new ADR (copy above this comment):

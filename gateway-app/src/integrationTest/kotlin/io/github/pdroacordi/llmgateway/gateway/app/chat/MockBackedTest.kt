@@ -130,12 +130,15 @@ open class MockBackedTest {
         // NoLeakIntegrationTest's canary. Set here: Spring calls the superclass's @DynamicPropertySource last, so a
         // subclass cannot override it (docs/knowledge/gotchas/dynamic-property-source-superclass-registers-last.md).
         const val KEY = "sk-canary-key"
+        const val ANTHROPIC_KEY = "sk-ant-canary-key"
 
         @JvmStatic
         @DynamicPropertySource
         fun mockProvider(registry: DynamicPropertyRegistry) {
             registry.add("llmgw.providers.openai.base-url") { "${SharedMockProvider.baseUrl}/v1" }
             registry.add("llmgw.providers.openai.api-key") { KEY }
+            registry.add("llmgw.providers.anthropic.base-url") { "${SharedMockProvider.baseUrl}/v1" }
+            registry.add("llmgw.providers.anthropic.api-key") { ANTHROPIC_KEY }
         }
     }
 }

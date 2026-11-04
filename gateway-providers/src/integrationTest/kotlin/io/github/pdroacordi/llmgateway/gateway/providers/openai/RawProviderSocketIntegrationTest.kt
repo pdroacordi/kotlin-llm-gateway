@@ -13,6 +13,8 @@ import io.github.pdroacordi.llmgateway.gateway.core.chat.Role
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
 import io.github.pdroacordi.llmgateway.gateway.providers.ApiKey
+import io.github.pdroacordi.llmgateway.gateway.providers.upstream.PoolConfig
+import io.github.pdroacordi.llmgateway.gateway.providers.upstream.StreamConfig
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals

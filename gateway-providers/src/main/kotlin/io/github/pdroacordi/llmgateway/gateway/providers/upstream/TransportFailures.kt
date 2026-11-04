@@ -1,4 +1,4 @@
-package io.github.pdroacordi.llmgateway.gateway.providers.openai
+package io.github.pdroacordi.llmgateway.gateway.providers.upstream
 
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import org.springframework.core.codec.DecodingException
@@ -36,7 +36,7 @@ internal fun Flux<DataBuffer>.bodyFailuresAsTransport(): Flux<DataBuffer> =
 internal fun Throwable.sourceName(): String = (this as? UpstreamBodyFailure)?.source ?: javaClass.name
 
 /** What a call raised to a [ProviderFailure], in the order of GW-01 section 5; anything else is a bug and rethrows. */
-internal object OpenAiTransportFailures {
+internal object TransportFailures {
     fun classify(failure: Throwable): ProviderFailure =
         when (failure) {
             // Only the top level is our Mono.timeout: WebClient wraps a pool acquire timeout.

@@ -3,6 +3,9 @@ package io.github.pdroacordi.llmgateway.mockprovider.generation
 import io.github.pdroacordi.llmgateway.mockprovider.behaviour.ContentMode
 import io.github.pdroacordi.llmgateway.mockprovider.behaviour.ResolvedContent
 import io.github.pdroacordi.llmgateway.mockprovider.behaviour.ResolvedUsage
+import io.github.pdroacordi.llmgateway.mockprovider.behaviour.ScriptedFinish
+import io.github.pdroacordi.llmgateway.mockprovider.behaviour.ThinkingSpec
+import io.github.pdroacordi.llmgateway.mockprovider.behaviour.ToolCallSpec
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -142,5 +145,60 @@ class CompletionPlannerTest {
     fun `omit is carried to the plan`() {
         assertTrue(planner.plan(conversation, null, lorem, noUsageOverride.copy(omit = true)).usage.omit)
         assertFalse(planner.plan(conversation, null, lorem, noUsageOverride).usage.omit)
+    }
+
+    private val tool = ToolCallSpec("t1", "get", """{"city":"Paris"}""", 8)
+
+    private fun fixed(
+        text: String,
+        toolCalls: List<ToolCallSpec> = emptyList(),
+        finish: ScriptedFinish? = null,
+        thinking: List<ThinkingSpec> = emptyList(),
+    ) = ResolvedContent(ContentMode.FIXED, text, 16, toolCalls, finish, thinking)
+
+    @Test
+    fun `parts come in order, thinking then text then tools, and text and pieces are derived`() {
+        val thinking = listOf(ThinkingSpec(signature = "s"))
+        val plan = planner.plan(conversation, null, fixed("Hi there", listOf(tool), null, thinking), noUsageOverride)
+
+        assertEquals(
+            listOf(PlanPart.Thinking::class, PlanPart.Text::class, PlanPart.ToolCall::class),
+            plan.parts.map { it::class },
+        )
+        assertEquals("Hi there", plan.text)
+        assertEquals(listOf("Hi", " there", """{"city":""", """"Paris"}"""), plan.pieces)
+    }
+
+    @Test
+    fun `completion tokens count text and argument pieces, not thinking`() {
+        val thinking = listOf(ThinkingSpec(signature = "s"))
+        val plan = planner.plan(conversation, null, fixed("Hi there", listOf(tool), null, thinking), noUsageOverride)
+
+        assertEquals(4, plan.usage.completionTokens)
+    }
+
+    @Test
+    fun `tool calls imply the tool finish, and a scripted finish wins`() {
+        val plain = planner.plan(conversation, null, fixed("", listOf(tool)), noUsageOverride)
+        val scripted = fixed("", listOf(tool), ScriptedFinish.REFUSAL)
+
+        assertEquals(Finish.TOOL_CALLS, plain.finish)
+        assertEquals(Finish.REFUSAL, planner.plan(conversation, null, scripted, noUsageOverride).finish)
+    }
+
+    @Test
+    fun `a call the cap would cut is left out, with a length finish`() {
+        val plan = planner.plan(conversation, 3, fixed("Hi there", listOf(tool)), noUsageOverride)
+
+        assertEquals(emptyList<PlanPart.ToolCall>(), plan.toolCalls)
+        assertEquals(Finish.LENGTH, plan.finish)
+    }
+
+    @Test
+    fun `an empty input has no pieces, and no text means no text part beside a tool call`() {
+        val plan = planner.plan(conversation, null, fixed("", listOf(ToolCallSpec(null, "now", "{}"))), noUsageOverride)
+
+        assertEquals(1, plan.parts.size)
+        assertEquals(emptyList<String>(), plan.toolCalls.single().pieces)
     }
 }

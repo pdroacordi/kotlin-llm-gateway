@@ -17,8 +17,14 @@ class ServerStreamConfiguration {
     fun clientWriteTimeout(
         server: ServerStreamProperties,
         openai: OpenAiProperties,
+        anthropic: AnthropicProperties,
     ): NettyServerCustomizer {
-        server.validate(openai.stream.idleTimeout)
+        server.validate(
+            listOfNotNull(
+                openai.stream.idleTimeout.takeIf { openai.enabled },
+                anthropic.stream.idleTimeout.takeIf { anthropic.enabled },
+            ).minOrNull(),
+        )
         return NettyServerCustomizer { http ->
             http.doOnConnection { connection ->
                 connection.addHandlerLast(HANDLER, ClientStallHandler(server.clientWriteTimeout))

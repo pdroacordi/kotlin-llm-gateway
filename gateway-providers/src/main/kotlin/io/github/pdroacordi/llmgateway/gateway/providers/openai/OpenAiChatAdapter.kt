@@ -6,45 +6,20 @@ import io.github.pdroacordi.llmgateway.gateway.core.chat.ProviderResult
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ProviderStreamEvent
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.github.pdroacordi.llmgateway.gateway.providers.json.exactTreeReader
-import io.netty.channel.ChannelOption
+import io.github.pdroacordi.llmgateway.gateway.providers.upstream.CLIENT_REQUEST_ID
+import io.github.pdroacordi.llmgateway.gateway.providers.upstream.Exchange
+import io.github.pdroacordi.llmgateway.gateway.providers.upstream.TransportFailures
+import io.github.pdroacordi.llmgateway.gateway.providers.upstream.UpstreamClient
+import io.github.pdroacordi.llmgateway.gateway.providers.upstream.providerRequestId
+import io.github.pdroacordi.llmgateway.gateway.providers.upstream.sourceName
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.reactor.awaitSingle
 import org.slf4j.LoggerFactory
-import org.springframework.core.codec.DecodingException
-import org.springframework.core.io.buffer.DataBufferLimitException
-import org.springframework.http.HttpHeaders
-import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
-import org.springframework.http.client.reactive.ReactorClientHttpConnector
-import org.springframework.web.reactive.function.client.ClientResponse
-import org.springframework.web.reactive.function.client.WebClient
-import org.springframework.web.reactive.function.client.WebClientException
-import reactor.netty.http.HttpProtocol
-import reactor.netty.http.client.HttpClient
-import reactor.netty.resources.ConnectionProvider
 import tools.jackson.databind.json.JsonMapper
-import java.io.IOException
 import java.net.URI
 import java.time.Clock
-import java.time.Duration
-import java.util.concurrent.TimeoutException
 
-internal const val CLIENT_REQUEST_ID = "X-Client-Request-Id"
-private const val REQUEST_ID = "x-request-id"
-private val PROVIDER_REQUEST_ID = Regex("""[A-Za-z0-9_.-]{1,128}""")
-
-// A header from outside: only a value that looks like an ID reaches the log.
-internal fun providerRequestId(headers: HttpHeaders): String? =
-    headers.getFirst(REQUEST_ID)?.takeIf { PROVIDER_REQUEST_ID.matches(it) }
-
-// The body is read as bytes whatever the type says, and reading it would parse a value a proxy may have mangled:
-// InvalidMediaTypeException is no transport failure, and would throw a paid answer away.
-internal fun withoutContentType(response: ClientResponse): ClientResponse =
-    response
-        .mutate()
-        .headers { it.remove(HttpHeaders.CONTENT_TYPE) }
-        .body { it.bodyFailuresAsTransport() }
-        .build()
+internal const val OPENAI_REQUEST_ID = "x-request-id"
 
 /**
  * The OpenAI side of [ChatModelPort]: one POST whose status, headers and bytes go to pure functions
@@ -61,45 +36,12 @@ class OpenAiChatAdapter(
     private val reader = OpenAiResponseReader(trees)
     private val classifier = OpenAiFailureClassifier(trees)
     private val endpoint = URI.create("${config.baseUrl.toString().trimEnd('/')}/chat/completions")
-
-    // Its own pool, so one provider's stall cannot exhaust another's (ADR-GW-01-004).
-    private val connections =
-        ConnectionProvider
-            .builder(POOL_NAME)
-            .maxConnections(config.pool.maxConnections)
-            .pendingAcquireMaxCount(config.pool.maxConnections * PENDING_PER_CONNECTION)
-            .pendingAcquireTimeout(config.pool.pendingAcquireTimeout)
-            .maxIdleTime(config.pool.maxIdleTime)
-            .maxLifeTime(config.pool.maxLifeTime)
-            .evictInBackground(EVICTION_INTERVAL)
-            .build()
-
-    private val http =
-        HttpClient
-            .create(connections)
-            .protocol(HttpProtocol.HTTP11)
-            // Reactor Netty otherwise repeats a request once on some connection resets (ADR-GW-01-004: no retries).
-            .disableRetry(true)
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, config.connectTimeout.toMillis().toInt())
-
-    private val client =
-        WebClient
-            .builder()
-            .clientConnector(ReactorClientHttpConnector(http))
-            .codecs { it.defaultCodecs().maxInMemorySize(config.maxResponseBytes) }
-            .build()
-
-    private val streams = OpenAiChatStream(client, endpoint, config, mapper, clock)
+    private val upstream = UpstreamClient(POOL_NAME, config.connectTimeout, config.maxResponseBytes, config.pool)
+    private val streams = OpenAiChatStream(upstream.web, endpoint, config, mapper, clock)
 
     /** Startup only; blocks. The first request would otherwise load these on an event loop. */
     fun warmUp() {
-        // docs/knowledge/gotchas/kotlinx-reactive-await-loads-context-injectors-on-first-use.md
-        Class.forName(REACTIVE_FLOW)
-        // Jackson builds its tree (de)serializers on first use under a ReentrantLock, which concurrent first requests
-        // would contend for on event loops.
-        trees.readTree(EMPTY_OBJECT)
-        mapper.writeValueAsBytes(mapper.nodeFactory.objectNode())
-        http.warmup().block(WARM_UP_TIMEOUT)
+        upstream.warmUp(mapper, trees)
         log.info(
             "OpenAI adapter ready: {}://{}{}, connect timeout {}, request timeout {}",
             config.baseUrl.scheme,
@@ -112,47 +54,24 @@ class OpenAiChatAdapter(
 
     override suspend fun complete(call: ChatCall): ProviderResult {
         val started = clock.millis()
-        return when (val exchange = exchange(call)) {
+        val body = mapper.writeValueAsBytes(OpenAiRequestWriter.write(call, mapper.nodeFactory))
+        val exchange =
+            upstream.exchange(
+                endpoint,
+                config.requestTimeout,
+                {
+                    it.setBearerAuth(config.apiKey.reveal())
+                    it.set(CLIENT_REQUEST_ID, call.requestId.toString())
+                },
+                body,
+            )
+        return when (exchange) {
             is Exchange.Received -> interpret(call, exchange.response, started)
             is Exchange.Broken -> transportFailure(call, exchange.failure, started)
         }
     }
 
     override fun stream(call: ChatCall): Flow<ProviderStreamEvent> = streams.stream(call)
-
-    // Named types only: a CancellationException passes through, and an unknown exception is a bug (GW-01 section 5).
-    private suspend fun exchange(call: ChatCall): Exchange =
-        try {
-            Exchange.Received(post(call))
-        } catch (failure: TimeoutException) {
-            Exchange.Broken(failure)
-        } catch (failure: WebClientException) {
-            Exchange.Broken(failure)
-        } catch (failure: IOException) {
-            Exchange.Broken(failure)
-        } catch (failure: DataBufferLimitException) {
-            Exchange.Broken(failure)
-        } catch (failure: DecodingException) {
-            Exchange.Broken(failure)
-        }
-
-    // Mono.timeout, not withTimeout: its continuation would land on a thread BlockHound does not watch
-    // (docs/knowledge/gotchas/spring-coroutine-handlers-resume-on-default-executor-after-delay.md).
-    private suspend fun post(call: ChatCall): ResponseEntity<ByteArray> {
-        val body = mapper.writeValueAsBytes(OpenAiRequestWriter.write(call, mapper.nodeFactory))
-        return client
-            .post()
-            .uri(endpoint)
-            .contentType(MediaType.APPLICATION_JSON)
-            .accept(MediaType.APPLICATION_JSON)
-            .headers {
-                it.setBearerAuth(config.apiKey.reveal())
-                it.set(CLIENT_REQUEST_ID, call.requestId.toString())
-            }.bodyValue(body)
-            .exchangeToMono { withoutContentType(it).toEntity(ByteArray::class.java) }
-            .timeout(config.requestTimeout)
-            .awaitSingle()
-    }
 
     private fun interpret(
         call: ChatCall,
@@ -182,7 +101,7 @@ class OpenAiChatAdapter(
         cause: Throwable,
         started: Long,
     ): ProviderResult {
-        val failure = OpenAiTransportFailures.classify(cause)
+        val failure = TransportFailures.classify(cause)
         log.warn(
             "Provider call failed: deployment={} exception={} durationMs={}",
             call.deployment.id.value,
@@ -203,7 +122,7 @@ class OpenAiChatAdapter(
                 "inputTokens={} outputTokens={} estimated={}",
             call.deployment.id.value,
             response.statusCode.value(),
-            providerRequestId(response.headers),
+            providerRequestId(response.headers, OPENAI_REQUEST_ID),
             clock.millis() - started,
             completed.usage?.inputTokens?.value,
             completed.usage?.outputTokens?.value,
@@ -223,35 +142,18 @@ class OpenAiChatAdapter(
             response.statusCode.value(),
             fields.code,
             fields.type,
-            providerRequestId(response.headers),
+            providerRequestId(response.headers, OPENAI_REQUEST_ID),
             clock.millis() - started,
         )
     }
 
     override fun close() {
-        connections.dispose()
-    }
-
-    private sealed interface Exchange {
-        data class Received(
-            val response: ResponseEntity<ByteArray>,
-        ) : Exchange
-
-        data class Broken(
-            val failure: Throwable,
-        ) : Exchange
+        upstream.close()
     }
 
     private companion object {
         const val POOL_NAME = "openai"
-        const val REACTIVE_FLOW = "kotlinx.coroutines.reactive.ReactiveFlowKt"
-
-        // Reactor Netty's default for a custom pool.
-        const val PENDING_PER_CONNECTION = 2
-        const val EMPTY_OBJECT = "{}"
         val EMPTY_BODY = ByteArray(0)
-        val EVICTION_INTERVAL: Duration = Duration.ofSeconds(30)
-        val WARM_UP_TIMEOUT: Duration = Duration.ofSeconds(30)
         private val log = LoggerFactory.getLogger(OpenAiChatAdapter::class.java)
     }
 }

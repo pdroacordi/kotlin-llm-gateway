@@ -9,6 +9,7 @@ import com.openai.helpers.ChatCompletionAccumulator
 import com.openai.models.chat.completions.ChatCompletionChunk
 import com.openai.models.chat.completions.ChatCompletionCreateParams
 import com.openai.models.chat.completions.ChatCompletionStreamOptions
+import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatExtensions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -79,7 +80,7 @@ class OpenAiSdkStreamContractTest : MockBackedTest() {
         assertTrue(last.choices().isEmpty())
         val usage = last.usage().orElseThrow()
         assertTrue(usage.promptTokens() > 0)
-        assertFalse(ChatChunkWriter.EXTENSION_MEMBER in last._allProperties())
+        assertFalse(ChatExtensions.MEMBER in last._allProperties())
     }
 
     @Test
@@ -90,7 +91,7 @@ class OpenAiSdkStreamContractTest : MockBackedTest() {
 
         last.validate()
         assertTrue(last.usage().isPresent)
-        val extension = last._allProperties()[ChatChunkWriter.EXTENSION_MEMBER]
+        val extension = last._allProperties()[ChatExtensions.MEMBER]
         val member = extension?.asObject()?.getOrNull()?.get(ChatChunkWriter.USAGE_ESTIMATED_MEMBER)
         assertEquals(JsonValue.from(true), member)
     }

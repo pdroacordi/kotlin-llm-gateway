@@ -14,6 +14,7 @@ Mermaid inside Markdown, one diagram per file. GitHub renders them; there is no 
 
 | Diagram | Shows | Updated |
 |---|---|---|
-| [container-overview](container-overview.md) | Services, stores and external providers | 2026-11-03 (target) |
-| [sequence-chat-completion](sequence-chat-completion.md) | The request pipeline of `/v1/chat/completions` | 2026-11-03 (target) |
+| [container-overview](container-overview.md) | Services, stores and external providers | 2026-11-04 (target) |
+| [sequence-chat-completion](sequence-chat-completion.md) | The request pipeline of `/v1/chat/completions` | 2026-11-04 (target) |
+| [sequence-anthropic-stream](sequence-anthropic-stream.md) | A stream through the Anthropic adapter, with the first chunk held | 2026-11-04 (built) |
 | [sequence-agent-run](sequence-agent-run.md) | An agent run with tool calls, persisted step by step | 2026-11-03 (target) |

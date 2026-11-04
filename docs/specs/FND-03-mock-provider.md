@@ -4,7 +4,7 @@ title: mock-provider (OpenAI- and Anthropic-shaped fake with configurable latenc
 status: done   # not-started | in-progress | done | blocked | skipped
 needs: [FND-01]
 owner: —
-updated: 2026-11-03
+updated: 2026-11-04
 references:
   - https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create
   - https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events
@@ -391,7 +391,7 @@ Libraries: Spring Boot WebFlux, actuator, `kotlinx-coroutines-reactor` (all from
 - **Seed.** FNV-1a 64-bit (draft-eastlake-fnv) over the canonical string's UTF-8 bytes. Pure Kotlin, no JCA call on the event loop.
 - **Modes.** `lorem` (default): `count` words drawn from a fixed 64-word lowercase English vocabulary (written for this project, a constant in `TextGenerator`) with `SplittableRandom(seed)`, joined by single spaces. `echo`: the text of the last `user` turn. `fixed`: the scenario's `text`.
 - **Length.** `lorem` produces `content.completionTokens` (default `mock.defaults.completion-tokens` = 16) tokens. Every mode is then cut to the request's cap (`max_completion_tokens`/`max_tokens`, Anthropic `max_tokens`) in pieces; a cut sets `length` / `max_tokens`. Anthropic `max_tokens: 0` gives empty content, `stop_reason: "max_tokens"`.
-- **Pieces.** `Tokenizer.pieces` splits the final text into pieces, each one token with the whitespace before it. A stream sends one piece per content event; `completion_tokens` equals the piece count. Room for GW-03/GW-06: `CompletionPlan` carries a list of content parts, today only text.
+- **Pieces.** `Tokenizer.pieces` splits the final text into pieces, each one token with the whitespace before it. A stream sends one piece per content event; `completion_tokens` equals the piece count. Corrected 2026-11-04 (GW-03): `CompletionPlan` carries a list of `PlanPart`s, thinking, text and tool calls; this line said "today only text", and until GW-03 the plan held only `pieces: List<String>` (ADR-GW-03-019).
 - **Tests must not assert exact `lorem` words** (the vocabulary may be edited); golden files use `fixed` content.
 
 ### Usage
@@ -819,6 +819,7 @@ Targets, measured once and recorded in the Log; not gates.
 - **Decision:** A. GW-03 (Anthropic tool-call translation) and GW-06 (tool calling pass-through) extend the mock with scripted tool calls as part of their own items; `CompletionPlan` holds a list of content parts so that extension adds a part type.
 - **Consequences:** GW-03's and GW-06's plans include a mock step. Buys: FND-03 stays at seven half-day steps and every listed consumer except tool calling is served.
 - **Date:** 2026-11-03
+- **Revision (2026-11-04):** the code never matched this: `CompletionPlan` is `pieces: List<String>`, not a list of content parts, so scripted tool calls are a refactor rather than an added type. GW-03 does that refactor and adds scripted tool calls on both provider shapes, so GW-06 no longer has a mock step for them (ADR-GW-03-009, ADR-GW-03-019).
 
 ### ADR-FND-03-012: The `integrationTest` suite
 - **Context:** [ADR-016](../DECISIONS.md#adr-016) (2026-11-03) moves tests that need Docker out of `test` into a per-module `integrationTest` suite wired into `check`, and leaves its construction to FND-03 ("a convention plugin or Gradle JVM test suites, its local choice"). FND-03 has the first such test (`MockProviderImageTest`); FND-02 and every adapter item add more. ADR-014's checklist has each module apply exactly one convention plugin. Coverage (Kover), detekt and ktlint must cover the new source set without counting test code as production code.

@@ -2,6 +2,7 @@ package io.github.pdroacordi.llmgateway.gateway.app.chat
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.params.ParameterizedTest
@@ -106,5 +107,111 @@ class NoLeakIntegrationTest : MockBackedTest() {
         const val ORGANIZATION = "org-canary"
         const val PROMPT = "canary-prompt"
         const val COMPLETION = "canary-completion"
+    }
+}
+
+@ExtendWith(OutputCaptureExtension::class)
+@TestPropertySource(
+    properties = [
+        "logging.level.io.github.pdroacordi.llmgateway=DEBUG",
+        "logging.level.web=TRACE",
+    ],
+)
+class AnthropicNoLeakIntegrationTest : AnthropicBackedTest() {
+    private val prompted = """{"model":"mock-claude","messages":[{"role":"user","content":"$PROMPT"}]}"""
+    private val tooled =
+        """{"model":"mock-claude","messages":[{"role":"user","content":"$PROMPT"},
+        {"role":"assistant","tool_calls":[{"id":"t","type":"function",
+        "function":{"name":"g","arguments":"{\"x\":\"$ARGUMENT\"}"}}]},
+        {"role":"tool","tool_call_id":"t","content":"$ARGUMENT"}]}"""
+
+    private fun assertNoCanary(
+        text: String,
+        output: CapturedOutput,
+    ) {
+        listOf(PROVIDER_MESSAGE, PROMPT, ARGUMENT, ANTHROPIC_KEY).forEach { canary ->
+            assertFalse(canary in text) { "$canary in the response: $text" }
+            assertFalse(canary in output.all) { "$canary in the log" }
+        }
+    }
+
+    // An absence proves nothing unless the canaries were in play.
+    private fun assertCanariesWereSent() {
+        val entry = journal().single()
+        assertEquals(fingerprint(ANTHROPIC_KEY), entry.at("/credential/fingerprint").stringValue())
+        assertTrue(ARGUMENT in entry.at("/body").stringValue())
+    }
+
+    private fun body(request: String): String =
+        chat(request)
+            .expectBody(ByteArray::class.java)
+            .returnResult()
+            .responseBody
+            ?.decodeToString()
+            .orEmpty()
+
+    @ParameterizedTest
+    @ValueSource(ints = [400, 401, 402, 403, 404, 429, 500, 503, 529])
+    fun `a provider error with canaries leaves nothing in the response or the log`(
+        status: Int,
+        output: CapturedOutput,
+    ) {
+        claudeScenario("""{"otherwise":{"error":{"status":$status,"message":"$PROVIDER_MESSAGE"}}}""")
+
+        val body = body(tooled)
+
+        eventually { "with status" in output.all }
+        assertCanariesWereSent()
+        assertNoCanary(body, output)
+    }
+
+    @Test
+    fun `an in-band error frame leaves nothing in the response or the log`(output: CapturedOutput) {
+        claudeScenario(
+            """{"otherwise":{"error":{"status":529,"message":"$PROVIDER_MESSAGE"},
+            "fault":{"kind":"stream_error","afterPieces":1}}}""",
+        )
+
+        val stream = rawStream(tooled.dropLast(1) + ""","stream":true}""")
+
+        eventually { "Provider stream failed" in output.all }
+        assertCanariesWereSent()
+        assertNoCanary(stream.body, output)
+    }
+
+    @Test
+    fun `a success keeps the prompt, the key, the thinking and the completion out of the log`(output: CapturedOutput) {
+        claudeScenario(
+            """{"otherwise":{"content":{"mode":"fixed","text":"$COMPLETION",
+            "thinking":[{"signature":"$SIGNATURE"}]}}}""",
+        )
+
+        val body = body(prompted)
+
+        eventually { "Provider call answered" in output.all }
+        assertEquals(COMPLETION, mapper.readTree(body).at("/choices/0/message/content").stringValue())
+        assertFalse(COMPLETION in output.all) { "the completion in the log" }
+        assertFalse(SIGNATURE in output.all) { "the signature in the log" }
+        assertFalse(PROMPT in output.all) { "the prompt in the log" }
+    }
+
+    @Test
+    fun `a refused request keeps its value out of the log, and a hashed user out of both`(output: CapturedOutput) {
+        val request =
+            """{"model":"mock-claude","user":"$ARGUMENT","stop":7,"messages":[{"role":"user","content":"$PROMPT"}]}"""
+
+        val body = body(request)
+
+        eventually { "Provider call refused" in output.all }
+        assertFalse(ARGUMENT in body) { body }
+        assertFalse(ARGUMENT in output.all) { output.all }
+    }
+
+    private companion object {
+        const val PROVIDER_MESSAGE = "canary-provider-message"
+        const val PROMPT = "canary-prompt"
+        const val ARGUMENT = "canary-tool-argument"
+        const val COMPLETION = "canary-completion"
+        const val SIGNATURE = "canary-signature"
     }
 }

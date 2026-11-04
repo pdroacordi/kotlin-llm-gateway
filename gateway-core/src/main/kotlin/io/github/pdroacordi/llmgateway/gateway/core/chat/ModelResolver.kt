@@ -5,10 +5,18 @@ fun interface ModelResolver {
     fun resolve(requested: ModelName): Deployment
 }
 
-/** Every model goes to the one deployment under the client's name (ADR-GW-01-006). */
-class PassThroughModelResolver(
-    private val id: DeploymentId,
-    private val provider: ProviderId,
+data class ModelPrefix(
+    val prefix: String,
+    val provider: ProviderId,
+)
+
+/** First matching prefix, else [default]; the deployment is named after its provider. RTE-01 replaces this. */
+class PrefixModelResolver(
+    private val prefixes: List<ModelPrefix>,
+    private val default: ProviderId,
 ) : ModelResolver {
-    override fun resolve(requested: ModelName): Deployment = Deployment(id, provider, requested)
+    override fun resolve(requested: ModelName): Deployment {
+        val provider = prefixes.firstOrNull { requested.value.startsWith(it.prefix) }?.provider ?: default
+        return Deployment(DeploymentId(provider.value), provider, requested)
+    }
 }

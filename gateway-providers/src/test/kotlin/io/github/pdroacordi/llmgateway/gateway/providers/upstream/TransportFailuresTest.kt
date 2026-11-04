@@ -1,4 +1,4 @@
-package io.github.pdroacordi.llmgateway.gateway.providers.openai
+package io.github.pdroacordi.llmgateway.gateway.providers.upstream
 
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.netty.channel.ConnectTimeoutException
@@ -32,28 +32,28 @@ import java.util.concurrent.TimeoutException
 import javax.net.ssl.SSLException
 import javax.net.ssl.SSLHandshakeException
 
-class OpenAiTransportFailuresTest {
+class TransportFailuresTest {
     @ParameterizedTest(name = "{0}")
     @MethodSource("cases")
     fun `each transport exception maps to its failure`(
         exception: Throwable,
         expected: ProviderFailure,
     ) {
-        assertEquals(expected, OpenAiTransportFailures.classify(exception))
+        assertEquals(expected, TransportFailures.classify(exception))
     }
 
     @Test
     fun `an unknown exception is a bug and is rethrown`() {
         val bug = IllegalStateException("a bug")
 
-        assertSame(bug, assertThrows<IllegalStateException> { OpenAiTransportFailures.classify(bug) })
+        assertSame(bug, assertThrows<IllegalStateException> { TransportFailures.classify(bug) })
     }
 
     @Test
     fun `a CancellationException is rethrown`() {
         val cancelled = CancellationException("the caller left")
 
-        assertSame(cancelled, assertThrows<CancellationException> { OpenAiTransportFailures.classify(cancelled) })
+        assertSame(cancelled, assertThrows<CancellationException> { TransportFailures.classify(cancelled) })
     }
 
     companion object {

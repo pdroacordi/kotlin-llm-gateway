@@ -1,6 +1,7 @@
 package io.github.pdroacordi.llmgateway.gateway.app.chat
 
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatChunk
+import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatExtensions
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ChunkChoice
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ChunkDelta
 import io.github.pdroacordi.llmgateway.gateway.core.chat.FinishReason
@@ -66,7 +67,7 @@ class ChatChunkWriterTest {
         assertEquals(
             """{"id":"c","object":"chat.completion.chunk","created":1,"model":"m","choices":[],""" +
                 """"usage":{"prompt_tokens":14,"completion_tokens":2,"total_tokens":16},""" +
-                """"${ChatChunkWriter.EXTENSION_MEMBER}":{"usage_estimated":true}}""",
+                """"${ChatExtensions.MEMBER}":{"usage_estimated":true}}""",
             written(usageChunk, includeUsage = true),
         )
     }

@@ -30,7 +30,10 @@ llmgw:
     # Removed by GW-04.
     allow-unauthenticated-exposure: false
   providers:
+    # Where a model no prefix claims goes; must be enabled. RTE-01 replaces this.
+    default-provider: openai
     openai:
+      enabled: true
       base-url: https://api.openai.com/v1
       # From the environment only (ADR-GW-01-012).
       api-key: ${OPENAI_API_KEY:}
@@ -57,6 +60,34 @@ llmgw:
         # The whole stream: about 90 000 tokens at an assumed 50 tokens/s.
         total-timeout: 30m
         # 1KB to 16MB, per event. A chunk is usually under 1 KB; streamed audio and logprobs are larger.
+        max-event-size: 1MB
+    anthropic:
+      # Off, so a start with no Anthropic key keeps working (ADR-GW-03-004).
+      enabled: false
+      # Case-sensitive; removed by RTE-01.
+      model-prefixes:
+        - claude-
+        - mock-claude
+      base-url: https://api.anthropic.com/v1
+      # From the environment only (ADR-GW-01-012).
+      api-key: ${ANTHROPIC_API_KEY:}
+      # YYYY-MM-DD. 2026-10-21 removes temperature, top_p and top_k (ADR-GW-03-002).
+      version: 2023-06-01
+      # Sent when a client names no cap, which the API requires; tokens, this project's judgment (ADR-GW-03-006).
+      default-max-tokens: 4096
+      connect-timeout: 5s
+      request-timeout: 300s
+      max-response-size: 16MB
+      # Its own values and its own pool: one provider's stall cannot exhaust the other's.
+      pool:
+        max-connections: 500
+        pending-acquire-timeout: 5s
+        max-idle-time: 30s
+        max-life-time: 5m
+      stream:
+        first-byte-timeout: 120s
+        idle-timeout: 60s
+        total-timeout: 30m
         max-event-size: 1MB
 
 logging:

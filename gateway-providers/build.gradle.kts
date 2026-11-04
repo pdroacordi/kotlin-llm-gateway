@@ -12,6 +12,7 @@ dependencies {
     implementation(libs.jackson.databind)
     implementation(libs.kotlinx.coroutines.reactor)
     implementation(libs.slf4j.api)
+    testImplementation(testFixtures(project(":gateway-core")))
     testImplementation(libs.blockhound.junit.platform)
     testImplementation(libs.kotlinx.coroutines.test)
     "integrationTestImplementation"(project(":test-support"))

@@ -3,6 +3,7 @@ package io.github.pdroacordi.llmgateway.gateway.app.error
 import com.jayway.jsonpath.JsonPath
 import io.github.pdroacordi.llmgateway.gateway.app.ProbeController
 import io.github.pdroacordi.llmgateway.gateway.app.request.GatewayHeaders
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -35,10 +36,12 @@ import java.time.Duration
 @Import(ProbeController::class)
 @ExtendWith(OutputCaptureExtension::class)
 class ErrorEnvelopeIntegrationTest(
-    @Autowired private val client: WebTestClient,
+    @Autowired private val unauthenticated: WebTestClient,
     @Autowired private val context: ApplicationContext,
     @Autowired private val httpHandler: HttpHandler,
 ) {
+    private val client = unauthenticated.mutate().defaultHeader("Authorization", TestKeys.BEARER).build()
+
     private var mark = 0
 
     // Skips the class-level capture: docs/knowledge/gotchas/output-capture-all-includes-the-class-level-capture.md
@@ -66,7 +69,7 @@ class ErrorEnvelopeIntegrationTest(
             .expectBody()
             .json(
                 """
-                {"error":{"message":"Unknown request URL: GET /v1/does-not-exist.",
+                {"error":{"message":"Unknown request URL.",
                 "type":"invalid_request_error","param":null,"code":"unknown_url"}}
                 """.trimIndent(),
                 JsonCompareMode.STRICT,
@@ -189,6 +192,19 @@ class ErrorEnvelopeIntegrationTest(
         assertEquals(1, errorLines.size) { output.all }
         assertTrue("[$requestId]" in errorLines.single()) { errorLines.single() }
         assertFalse(QUERY in output.all) { output.all }
+    }
+
+    @Test
+    fun `a missing key gives the 401 envelope`() {
+        val result =
+            unauthenticated
+                .get()
+                .uri("/v1/does-not-exist")
+                .exchange()
+                .expectBody()
+                .returnResult()
+
+        assertEnvelope(result, 401, "missing_api_key")
     }
 
     private fun get(uri: String): EntityExchangeResult<ByteArray> =

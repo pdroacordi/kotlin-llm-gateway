@@ -11,11 +11,8 @@ class ClientDisconnectIntegrationTest : MockBackedTest() {
         val before = lastSeq()
 
         Socket("127.0.0.1", port).use { socket ->
-            val request =
-                "POST $ROUTE HTTP/1.1\r\nHost: 127.0.0.1:$port\r\nContent-Type: application/json\r\n" +
-                    "Content-Length: ${MINIMAL.length}\r\n\r\n$MINIMAL"
             socket.getOutputStream().apply {
-                write(request.encodeToByteArray())
+                write(rawRequest(MINIMAL).encodeToByteArray())
                 flush()
             }
             eventually { lastSeq() > before }

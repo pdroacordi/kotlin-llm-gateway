@@ -36,7 +36,7 @@ mock-provider                                        (provider fake on :8090; im
 test-support                                         (Testcontainers fixtures; integrationTest only; imports nothing of ours; FND-02)
 ```
 
-The graph above is the target. Built today: `gateway-core` (request IDs, the error model and the chat domain, FND-04, GW-01), `gateway-providers` (the OpenAI and Anthropic adapters over `.upstream`, GW-01, GW-03), `gateway-app`, `mock-provider` (FND-03, a Spring Boot app that imports nothing of ours), `test-support` (FND-02, Testcontainers fixtures for `integrationTest` sources only), `architecture-tests`. [ADR-014](docs/DECISIONS.md#adr-014) says which item creates each other module and its root package. Adding a module: `include` it in `settings.gradle.kts`, apply exactly one convention plugin from `build-logic/`, add a `kover(project(...))` line to the root `build.gradle.kts` if it has production code, and put every file under its root package from the ADR-014 table.
+The graph above is the target. Built today: `gateway-core` (request IDs, the error model, the chat domain and teams, FND-04, GW-01, GW-04), `gateway-providers` (the OpenAI and Anthropic adapters over `.upstream`, GW-01, GW-03), `gateway-infra` (the Postgres team store and its Caffeine cache, GW-04), `gateway-app`, `mock-provider` (FND-03, a Spring Boot app that imports nothing of ours), `test-support` (FND-02, Testcontainers fixtures for `integrationTest` sources only), `architecture-tests`. [ADR-014](docs/DECISIONS.md#adr-014) says which item creates each other module and its root package. Adding a module: `include` it in `settings.gradle.kts`, apply exactly one convention plugin from `build-logic/`, add a `kover(project(...))` line to the root `build.gradle.kts` if it has production code, and put every file under its root package from the ADR-014 table.
 
 - **Core modules are plain Kotlin.** No Spring, Reactor, Netty, JDBC/R2DBC or HTTP-client imports in `*-core`. They hold domain types, ports (interfaces) and pure policies (routing, limits, cost, cache keys). Konsist tests enforce it.
 - **One port per capability** (`ChatModelPort`, `RateLimiterPort`, `ResponseCachePort`, `GuardrailPort`, `UsageSink`, ...). Only the adapter sees a provider's or library's types.
@@ -76,7 +76,7 @@ Read the entry before touching the system. The rule beside each is the one a cha
 | Request context and errors | [request-context-and-errors](docs/knowledge/systems/request-context-and-errors.md) | Every response WebFlux handles carries a gateway-generated `x-request-id`; every error body is the OpenAI envelope written only by `gateway.app.error`; a 5xx body never carries an exception message. |
 | Local stack and test fixtures | [local-stack](docs/knowledge/systems/local-stack.md) | Host ports bind 127.0.0.1 from LLMGW_*_PORT with the defaults below; an image tag changes in deploy/compose.yaml and StackImages together; integration tests never touch the dev stack. |
 | Mock provider | [mock-provider](docs/knowledge/systems/mock-provider.md) | The same request always gets the same content and usage; a credential value is never stored, logged or returned; a scenario step is consumed by exactly one request. |
-| Auth and teams | (GW-04) | Every request resolves to exactly one team before any other stage. API keys are stored as HMAC hashes and shown once. |
+| Auth and teams | [auth-and-teams](docs/knowledge/systems/auth-and-teams.md) | Every `/v1` request resolves to exactly one team, and every `/admin` request to the admin key, before any other stage. Team keys are stored as HMAC digests and shown once. A store outage is never a 401. |
 | Provider adapters | [provider-adapters](docs/knowledge/systems/provider-adapters.md) | Provider types never cross the port. A stream is translated chunk by chunk, never buffered whole. Usage comes from the provider; an estimate is used only when the provider omits it, and is flagged `estimated`. A member an adapter cannot honour is a 400 with no upstream call, never a silent drop. |
 | Routing | (RTE-01) | Routing is a pure function of (request, route table, provider health, budget state). Fallback happens only before the first byte is sent. |
 | Rate limiting | (RL-01) | One atomic Redis script per decision; never read-then-write from the JVM. Limits are keyed by team, never by API key alone. |
@@ -100,7 +100,7 @@ Read the entry before touching the system. The rule beside each is the one a cha
 ./gradlew integrationTest                     # tests that need Docker (Testcontainers), per module (ADR-016)
 ./gradlew :architecture-tests:test            # Konsist architecture rules ARCH-1 to ARCH-13
 ./gradlew koverVerify                         # coverage thresholds
-./gradlew ktlintCheck detektMain detektTest   # style + static analysis (detekt with type resolution)
+./gradlew ktlintCheck detektMain detektTest detektIntegrationTest detektTestFixtures   # style + static analysis (detekt with type resolution)
 ./gradlew ktlintFormat                        # fix style
 ./gradlew build                               # everything, integrationTest included: needs Docker running
 docker compose -f deploy/compose.yaml up -d --wait   # local stack; overrides in deploy/.env
@@ -110,7 +110,7 @@ bash tools/smoke/live-openai.sh   # paid, real OpenAI API, key in .env (.env.exa
 
 Gradle runs on JDK 21+ and provisions the JDK 25 toolchain itself.
 
-`gateway-app` needs the key of each enabled provider to start (`OPENAI_API_KEY` by default; Anthropic is off unless enabled, and then needs `ANTHROPIC_API_KEY`), or the `local` profile, which enables both and points them at `mock-provider` with fake keys.
+`gateway-app` needs Postgres to start (`docker compose -f deploy/compose.yaml up -d --wait postgres`), in the `local` profile too. It also needs `LLMGW_KEY_HMAC_SECRET`, `LLMGW_ADMIN_KEY` and the key of each enabled provider (`OPENAI_API_KEY` by default; Anthropic is off unless enabled, and then needs `ANTHROPIC_API_KEY`), or the `local` profile, which supplies fake secrets, enables both providers and points them at `mock-provider` with fake keys.
 
 - TDD for core: a failing test first, the minimal code to pass, then refactor. Core tests are plain JUnit 5 + MockK + `kotlinx-coroutines-test`, no Spring context.
 - Integration tests use Testcontainers (Postgres, Redis, Kafka-compatible broker) and WireMock or `mock-provider`. Tests that need Docker live in `src/integrationTest` and run in the `integrationTest` suite (convention `llmgw.integration-test`, wired into `check`); without a daemon they fail, never skip (ADR-016). Shared, lazily started containers come from `test-support` (`SharedPostgres`, `SharedRedis`, `SharedRedpanda`, `SharedMockProvider`; images in `StackImages`, kept equal to `deploy/compose.yaml` by `StackContractTest`). A module adds `integrationTestImplementation(project(":test-support"))`, and `mockProvider(project(":mock-provider"))` for the mock image. `mock-provider` runs as a container built from its boot jar and `mock-provider/Dockerfile` (consume the `mockProviderBootJar` configuration).

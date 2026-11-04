@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Exercises POST /v1/chat/completions over real HTTP against mock-provider (GW-01 section 8, the gateway-smoke skill).
-# Needs gateway-app (profile `local`) and mock-provider already running; it never starts or stops either, and it
+# Needs gateway-app (profile `local`), mock-provider and compose Postgres already running; it starts neither app, and it
 # resets the mock. It calls no real provider: the `local` profile points the adapter at the mock with a fake key.
 # Usage, from anywhere: bash tools/smoke/chat-completions.sh
 # Optional environment:
@@ -8,7 +8,7 @@
 #   GATEWAY_LOG     the gateway's log file; turns on the log half of scenario 9
 #   HANG=1          runs the hang fault; start the gateway with LLMGW_PROVIDERS_OPENAI_REQUEST_TIMEOUT=2s first
 # Prints "PASS <check>", "SKIP <check>: <why>" or "FAIL <check>: <evidence>" per check, runs every check and exits 1
-# if any failed. Scenario 7 (stopped mock) and 12 (non-loopback start) stop or start a process, so they stay manual.
+# if any failed. Scenario 7 (stopped mock) stops a process, so it stays manual.
 set -u
 
 GATEWAY="${GATEWAY:-http://127.0.0.1:8080}"
@@ -19,6 +19,9 @@ TMP="$(mktemp -d)"
 HEADERS="$TMP/headers"
 BODY="$TMP/body"
 trap 'rm -rf "$TMP"' EXIT
+
+# shellcheck source=tools/smoke/team-key.sh
+. "$(dirname "$0")/team-key.sh"
 
 failed=0
 pass() { echo "PASS $1"; }
@@ -45,7 +48,7 @@ post() {
     local body=$1
     shift
     STATUS=$(curl -sS --max-time 30 -o "$BODY" -D "$HEADERS" -w '%{http_code}' \
-        -H 'Content-Type: application/json' "$@" --data "$body" "$GATEWAY$ROUTE")
+        -H "@$TEAM_KEY_HEADER" -H 'Content-Type: application/json' "$@" --data "$body" "$GATEWAY$ROUTE")
 }
 header() { tr -d '\r' <"$HEADERS" | sed -n "s/^$1: *//Ip" | tail -1; }
 minimal() { printf '{"model":"%s","messages":[{"role":"user","content":"%s"}]}' "$1" "${2:-Hi}"; }
@@ -67,6 +70,7 @@ curl -fsS --max-time 5 -X POST "$MOCK/__mock/reset" >/dev/null || {
 # 1. Health and bind.
 health=$(curl -sS --max-time 5 "$GATEWAY/actuator/health")
 case "$health" in *'"status":"UP"'*) pass "1 health" ;; *) fail "1 health" "$health" ;; esac
+team_key_create
 port="${GATEWAY##*:}"
 listeners=$( (ss -ltn 2>/dev/null || netstat -an) | grep -E "[:.]$port[[:space:]].*LISTEN|LISTEN.*[:.]$port[[:space:]]")
 if [ -z "$listeners" ]; then
@@ -78,7 +82,7 @@ else
 fi
 
 # 2. Completion.
-post "$(minimal mock-chat)" -H 'x-client-request-id: smoke-1' -H 'Authorization: Bearer client-key'
+post "$(minimal mock-chat)" -H 'x-client-request-id: smoke-1'
 check "2 status" "$STATUS" 200
 check "2 deployment" "$(header x-gateway-deployment)" openai
 check "2 client id echoed" "$(header x-client-request-id)" smoke-1
@@ -169,9 +173,8 @@ fi
 
 # 10. Rejections: none reaches the mock.
 before=$(last_seq)
-post "$(minimal mock-chat)" -H 'Host: evil.example'
-check "10 foreign Host status" "$STATUS" 403
-STATUS=$(curl -sS --max-time 5 -o "$BODY" -w '%{http_code}' -H 'Content-Type: text/plain' --data 'Hi' "$GATEWAY$ROUTE")
+STATUS=$(curl -sS --max-time 5 -o "$BODY" -w '%{http_code}' -H "@$TEAM_KEY_HEADER" -H 'Content-Type: text/plain' \
+    --data 'Hi' "$GATEWAY$ROUTE")
 check "10 text/plain status" "$STATUS" 415
 check "10 no upstream call" "$(last_seq)" "$before"
 
@@ -181,11 +184,9 @@ direct=$(for _ in $(seq 100); do
         -H 'Content-Type: application/json' --data "$(minimal mock-chat)" "$MOCK$ROUTE"
 done | median_ms)
 through=$(for _ in $(seq 100); do
-    curl -sS -o /dev/null -w '%{time_total}\n' -H 'Content-Type: application/json' \
+    curl -sS -o /dev/null -w '%{time_total}\n' -H "@$TEAM_KEY_HEADER" -H 'Content-Type: application/json' \
         --data "$(minimal mock-chat)" "$GATEWAY$ROUTE"
 done | median_ms)
 echo "INFO 11 median ms: direct $direct, through the gateway $through"
-
-skip "12 non-loopback start" "manual: LLMGW_BIND_ADDRESS=0.0.0.0 at startup exits non-zero naming the property"
 
 exit "$failed"

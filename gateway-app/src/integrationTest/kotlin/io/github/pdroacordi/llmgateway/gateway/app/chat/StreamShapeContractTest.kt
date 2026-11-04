@@ -1,5 +1,6 @@
 package io.github.pdroacordi.llmgateway.gateway.app.chat
 
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import io.github.pdroacordi.llmgateway.testsupport.SharedMockProvider
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -19,7 +20,7 @@ class StreamShapeContractTest : MockBackedTest() {
                 .post()
                 .uri(ROUTE)
                 .contentType(MediaType.APPLICATION_JSON)
-                .header("Authorization", "Bearer client-key")
+                .header("Authorization", TestKeys.BEARER)
                 .bodyValue(body)
                 .exchange()
                 .expectStatus()

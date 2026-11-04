@@ -1,5 +1,6 @@
 package io.github.pdroacordi.llmgateway.gateway.app.chat
 
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -51,7 +52,7 @@ class ChatCompletionsEndToEndTest(
             answered(
                 headers =
                     mapOf(
-                        HttpHeaders.AUTHORIZATION to "Bearer client-key",
+                        HttpHeaders.AUTHORIZATION to TestKeys.BEARER,
                         "OpenAI-Organization" to "org-client",
                         "OpenAI-Project" to "proj-client",
                     ),
@@ -132,30 +133,6 @@ class ChatCompletionsEndToEndTest(
     @Test
     fun `the default bind address is loopback`() {
         assertEquals("127.0.0.1", environment.getProperty("server.address"))
-    }
-
-    @Test
-    fun `a foreign Host gets 403 with the envelope and no upstream call`() {
-        val before = lastSeq()
-
-        chat(headers = mapOf(HttpHeaders.HOST to "evil.example"))
-            .expectStatus()
-            .isForbidden
-            .expectHeader()
-            .exists(REQUEST_ID)
-            .expectBody()
-            .jsonPath("$.error.message")
-            .isEqualTo("The request was rejected with HTTP status 403.")
-            .jsonPath("$.error.type")
-            .isEqualTo("invalid_request_error")
-
-        assertEquals(before, lastSeq())
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = ["127.0.0.1", "localhost", "[::1]"])
-    fun `a loopback Host passes`(host: String) {
-        chat(headers = mapOf(HttpHeaders.HOST to "$host:$port")).expectStatus().isOk
     }
 
     private companion object {

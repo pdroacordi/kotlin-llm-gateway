@@ -145,6 +145,7 @@ The gateway holds many concurrent, long-lived streaming responses (SSE) whose la
 - Blocking libraries are isolated in adapters on `Dispatchers.IO`; BlockHound in the integration tests catches violations.
 - 2026-11-03: BlockHound runs in every app module's test JVMs through `llmgw.spring-app`, not only in integration tests.
 - Whether persistence uses R2DBC or JDBC on `Dispatchers.IO` is decided in GW-04 (local ADR).
+- 2026-11-04 (GW-04): decided as R2DBC, and cross-cutting, since every later Postgres adapter follows it: [ADR-021](#adr-021).
 - Reviewers check cancellation and structured concurrency (gateway-reviewer, priority 1).
 
 ---
@@ -330,6 +331,7 @@ ADR-005 lists ten target modules. FND-01 builds the Gradle skeleton and the Kons
 - Details and the rule list: [`specs/FND-01-gradle-skeleton.md`](specs/FND-01-gradle-skeleton.md) (ADR-FND-01-005, ADR-FND-01-007).
 - 2026-11-03 (FND-03): `mock-provider` takes role `app` (a Spring Boot WebFlux service on port 8090) with an empty `dependsOn`, so it imports none of our packages; ARCH-6 allows its wiring and ARCH-10 confines its error mapper to `.mockprovider.error`. See [ADR-FND-03-003](specs/FND-03-mock-provider.md).
 - 2026-11-03 (FND-02): `test-support` added (role tool, ADR-017); `gateway-infra` is not created by FND-02 and comes with GW-04 or the first item with infra code.
+- 2026-11-04 (GW-04): `gateway-infra` created, with `.gateway.infra.postgres` and `.gateway.infra.cache`.
 
 ---
 
@@ -372,6 +374,7 @@ Full options and reasoning in [FND-04](specs/FND-04-request-context-and-errors.m
 - Each later item adds its variant and table row and inherits the request ID, the envelope and `x-request-id` on its errors without further work.
 - AGT-01 decides whether `/agents/v1` uses the same envelope. The default is yes, so the CLI parses one shape. agent-app cannot import `gateway-core` (ADR-011), so it keeps its own small table; ARCH-10 already confines its mapper to `.agent.app.error`.
 - COST-02 can store the request ID as a Postgres `uuid` with time-ordered inserts.
+- 2026-11-04 (GW-04): request content in a message includes the path, so the `unknown_url` message is `Unknown request URL.`. The stability rule covers (status, type, code), which did not change; a message is for humans (ADR-GW-04-020).
 
 ---
 
@@ -528,6 +531,65 @@ Full options and reasoning in [GW-03](specs/GW-03-anthropic-adapter.md), ADR-GW-
 - COST-01 prices from one meaning of `inputTokens`, and needs the extension count for cache writes.
 - AGT-02 echoes assistant messages whole; a client that rebuilds them from typed fields loses `llmgw`.
 - `llmgw` never reaches OpenAI: `OpenAiRequestWriter` drops it at the top level of the request and from each message. On the Anthropic path a message's `llmgw` is translated, and a top-level `llmgw` has no rule, so it is a 400 `unsupported_parameter` with no upstream call.
+
+<a id="adr-021"></a>
+## ADR-021: Persistence: R2DBC with `DatabaseClient`, Flyway over JDBC
+
+- **Status:** Accepted
+- **Date:** 2026-11-04
+
+### Context
+ADR-006 left R2DBC or JDBC to GW-04. RTE-01, COST-01, COST-02, AGT-01 and later items store data in Postgres too, so one answer serves all of them. CLAUDE.md allows blocking only on `Dispatchers.IO` inside an adapter, and BlockHound guards the hot path.
+
+### Options
+Full options and reasoning in [GW-04](specs/GW-04-teams-and-api-keys.md), ADR-GW-04-001. In short:
+- Driver: R2DBC; JDBC on a limited `Dispatchers.IO`.
+- Access: plain `DatabaseClient`; Spring Data R2DBC; jOOQ.
+- Migrations: Flyway over JDBC, since Flyway has no R2DBC mode.
+
+### Decision
+- **Access:** Postgres adapters live in `gateway-infra` and use plain `DatabaseClient` with explicit SQL. No Spring Data, no jOOQ.
+- **Migrations:** Flyway over JDBC, at startup only, from `gateway-infra` resources under `db/migration/gateway`. JDBC never runs after startup.
+- **Writes:** one statement each where possible (`ON CONFLICT`, `RETURNING`), so a race is settled by the database.
+- **Fallback:** if GW-04's spike fails, JDBC behind the same port on `Dispatchers.IO.limitedParallelism(poolSize)`, recorded as a dated revision here.
+
+### Consequences
+- `gateway-infra` is created by GW-04 (ADR-014).
+- `gateway-app` needs Postgres to start, in the `local` profile too; `./gradlew test` does not, because tests replace the port.
+- Two URLs come from the same `LLMGW_POSTGRES_*` variables.
+- An item with a real multi-statement need decides its transactions then; GW-04 has none.
+- 2026-11-04 (GW-04): the spike passed on Linux with one named BlockHound allowance, the SCRAM nonce, so the fallback was not used ([GW-04](specs/GW-04-teams-and-api-keys.md) Log, S1 to S6).
+
+---
+
+<a id="adr-022"></a>
+## ADR-022: Caller identity at the edge
+
+- **Status:** Accepted
+- **Date:** 2026-11-04
+
+### Context
+RL-01, CACHE-01, GRD-01, COST-02, RTE-01, AGT-01 and CLI-03 all depend on who is calling. CLAUDE.md says every request resolves to exactly one team before any other stage.
+
+### Options
+Full options and reasoning in [GW-04](specs/GW-04-teams-and-api-keys.md), ADR-GW-04-003, -005, -007 and -009. In short:
+- Auth: Spring Security; a filter per route; one `WebFilter`.
+- Team on the request: a nullable field on `RequestContext`; a separate non-null coroutine element.
+- Store down: fail open; 401; 503.
+
+### Decision
+- **Filter:** one `AuthWebFilter` at `HIGHEST_PRECEDENCE + 1`, scoped by `PathPattern`, the router's own matcher, to `/v1/**` (team key) and `/admin/**` (the operator's admin key). The two credentials never cross. No Spring Security.
+- **Team:** `TeamId` in core. `TeamContext`, a non-null coroutine element, exists only on an authenticated `/v1` request, and handlers read it. Core takes `TeamId` as a parameter and `ChatCall` carries it. MDC holds `teamId`.
+- **Failure:** the auth store fails closed. Unexpired cached keys keep serving; any other key gets 503 `team_store_unavailable`, never 401.
+- **Keys:** only an HMAC digest is stored, and the plain key is shown once.
+
+### Consequences
+- A later stage takes the team from `ChatCall`, not from a header or the context.
+- A new route outside `/v1` or `/admin` fails `AuthScopeTest` until it is classified.
+- `/agents/v1` belongs to agent-app, which AGT-01 secures on its own side; agent traffic reaches the gateway with a team key (ADR-011).
+- Revocation reaches other replicas within the key cache TTL, 30 s by default.
+
+---
 
 <!--
 Template for a new ADR (copy above this comment):

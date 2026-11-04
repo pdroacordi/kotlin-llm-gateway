@@ -609,6 +609,7 @@ Measured in steps 2 to 4 and recorded in the Log; targets, not gates.
   - E) Spring `@Bean` containers with `@ServiceConnection` per app context. Rejected as the only mechanism: plain adapter tests need containers too, and each distinct context would start its own.
 - **Decision:** C. Spring tests get connection details through Boot's `@ServiceConnection`; `@DynamicPropertySource` is reserved for properties Boot does not map. The first app item that connects to one of these services proves it with a `Shared*` container, in a way that does not let a context stop the singleton (U12: `@ImportTestcontainers` on fields, or a bean with an empty destroy method, whichever the run shows does not stop it).
 - **Consequences:** Tests share state within a JVM and follow the isolation rules in section 5. Gradle forks one JVM per module, so modules never share a container. Buys: one start per service per module run, and no inheritance knot.
+- **Revision (2026-11-04):** GW-04's Postgres tests take a database per class from `SharedPostgres.database(name)`, with URLs through `@DynamicPropertySource`: `@ServiceConnection` details name the container's own database, so a per-class one is a property Boot does not map. No context holds the container there, so U12 stays open for the first `@ServiceConnection` user (ADR-GW-04-010).
 - **Date:** 2026-11-03
 
 ### ADR-FND-02-008: One source of truth for image versions

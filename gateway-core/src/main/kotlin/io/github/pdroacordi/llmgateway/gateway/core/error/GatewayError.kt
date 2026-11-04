@@ -57,6 +57,24 @@ sealed interface GatewayError {
                     "stream_options",
                 )
 
+            val nameInvalid =
+                InvalidRequest(
+                    "'name' must be 1 to 64 of a-z, 0-9, '.', '_' or '-', and start with a letter or digit.",
+                    ErrorCodes.INVALID_REQUEST,
+                    "name",
+                )
+            val expiresAtInvalid =
+                InvalidRequest(
+                    "'expires_at' must be null or an RFC 3339 time after now.",
+                    ErrorCodes.INVALID_REQUEST,
+                    "expires_at",
+                )
+            val unknownMember =
+                InvalidRequest("The body has a member this endpoint does not accept.", ErrorCodes.INVALID_REQUEST)
+            val limitInvalid =
+                InvalidRequest("'limit' must be an integer from 1 to 100.", ErrorCodes.INVALID_REQUEST, "limit")
+            val afterInvalid = InvalidRequest("'after' must be a UUID.", ErrorCodes.INVALID_REQUEST, "after")
+
             fun messageNotObject(index: Int): InvalidRequest =
                 InvalidRequest("Each message must be a JSON object.", ErrorCodes.INVALID_REQUEST, "messages[$index]")
 
@@ -76,11 +94,8 @@ sealed interface GatewayError {
         }
     }
 
-    /** [path] is the request path without its query string. */
-    data class UnknownRoute(
-        val method: String,
-        val path: String,
-    ) : GatewayError
+    // Holds no path: a key pasted into a URL would reach the body, and the encoder's DEBUG line (ADR-GW-04-020).
+    data object UnknownRoute : GatewayError
 
     data class MethodNotAllowed(
         val method: String,
@@ -142,4 +157,24 @@ sealed interface ProviderFailure : GatewayError {
     data object UpstreamTimeout : ProviderFailure
 
     data object UpstreamError : ProviderFailure
+}
+
+/** A bad credential at the edge: one reply for every state a client must not tell apart (ADR-GW-04-004). */
+sealed interface Unauthenticated : GatewayError {
+    data object MissingKey : Unauthenticated
+
+    data object InvalidKey : Unauthenticated
+}
+
+/** What the team store can fail with. [Unavailable] is an outage, never a bad key (ADR-GW-04-005). */
+sealed interface TeamStoreFailure : GatewayError {
+    data object Unavailable : TeamStoreFailure
+
+    data object TeamNotFound : TeamStoreFailure
+
+    data object KeyNotFound : TeamStoreFailure
+
+    data object TeamNameTaken : TeamStoreFailure
+
+    data object KeyNameTaken : TeamStoreFailure
 }

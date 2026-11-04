@@ -2,6 +2,7 @@ package io.github.pdroacordi.llmgateway.gateway.core.chat
 
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -39,9 +40,9 @@ class ChatCompletionServiceTest {
         runTest {
             val port = RecordingPort { ProviderResult.Completed(COMPLETION, PROVIDER_USAGE) }
 
-            service(port).complete(REQUEST_ID, REQUEST)
+            service(port).complete(REQUEST_ID, TestKeys.TEAM_ID, REQUEST)
 
-            assertEquals(listOf(ChatCall(REQUEST_ID, DEPLOYMENT, REQUEST)), port.calls)
+            assertEquals(listOf(ChatCall(REQUEST_ID, TestKeys.TEAM_ID, DEPLOYMENT, REQUEST)), port.calls)
         }
 
     @Test
@@ -49,7 +50,7 @@ class ChatCompletionServiceTest {
         runTest {
             val port = RecordingPort { ProviderResult.Completed(COMPLETION, PROVIDER_USAGE) }
 
-            val outcome = service(port).complete(REQUEST_ID, REQUEST)
+            val outcome = service(port).complete(REQUEST_ID, TestKeys.TEAM_ID, REQUEST)
 
             assertEquals(ChatOutcome.Answered(DEPLOYMENT, COMPLETION, PROVIDER_USAGE), outcome)
             assertFalse((outcome as ChatOutcome.Answered).usage.estimated)
@@ -60,7 +61,7 @@ class ChatCompletionServiceTest {
         runTest {
             val port = RecordingPort { ProviderResult.Completed(COMPLETION, null) }
 
-            val outcome = service(port).complete(REQUEST_ID, REQUEST) as ChatOutcome.Answered
+            val outcome = service(port).complete(REQUEST_ID, TestKeys.TEAM_ID, REQUEST) as ChatOutcome.Answered
 
             assertTrue(outcome.usage.estimated)
             assertEquals(UsageEstimator().estimate(REQUEST, COMPLETION), outcome.usage)
@@ -73,7 +74,7 @@ class ChatCompletionServiceTest {
             val failure = ProviderFailure.RejectedByProvider(400, "bad_thing", "seed")
             val port = RecordingPort { ProviderResult.Failed(failure) }
 
-            assertEquals(ChatOutcome.Rejected(failure), service(port).complete(REQUEST_ID, REQUEST))
+            assertEquals(ChatOutcome.Rejected(failure), service(port).complete(REQUEST_ID, TestKeys.TEAM_ID, REQUEST))
         }
 
     @Test
@@ -86,7 +87,10 @@ class ChatCompletionServiceTest {
                     awaitCancellation()
                 }
 
-            val call = async(start = CoroutineStart.UNDISPATCHED) { service(port).complete(REQUEST_ID, REQUEST) }
+            val call =
+                async(
+                    start = CoroutineStart.UNDISPATCHED,
+                ) { service(port).complete(REQUEST_ID, TestKeys.TEAM_ID, REQUEST) }
             entered.await()
             call.cancel()
 

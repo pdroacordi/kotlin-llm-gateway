@@ -10,6 +10,7 @@ import com.openai.helpers.ChatCompletionAccumulator
 import com.openai.models.chat.completions.ChatCompletion
 import com.openai.models.chat.completions.ChatCompletionChunk
 import com.openai.models.chat.completions.ChatCompletionCreateParams
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -22,7 +23,7 @@ class AnthropicSdkContractTest : AnthropicBackedTest() {
         OpenAIOkHttpClient
             .builder()
             .baseUrl("http://127.0.0.1:$port/v1")
-            .apiKey("client-key")
+            .apiKey(TestKeys.TEAM_KEY)
             .maxRetries(0)
             .responseValidation(true)
             .timeout(Duration.ofSeconds(30))

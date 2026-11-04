@@ -56,7 +56,7 @@ class GatewayErrorWebExceptionHandler(
         ex: Throwable,
     ): Mono<Void> {
         val request = exchange.request
-        val reply = ex.toGatewayError(request.method.name(), request.path.value()).toReply(requestId)
+        val reply = ex.toGatewayError(request.method.name()).toReply(requestId)
         val response = exchange.response
         prepare(response, reply.status, requestId)
         reply.headers.forEach { (name, value) -> response.headers.set(name, value) }

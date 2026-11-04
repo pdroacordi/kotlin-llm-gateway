@@ -1,5 +1,6 @@
 package io.github.pdroacordi.llmgateway.gateway.app.chat
 
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -26,7 +27,7 @@ class NoLeakIntegrationTest : MockBackedTest() {
         text: String,
         output: CapturedOutput,
     ) {
-        listOf(PROVIDER_MESSAGE, ORGANIZATION, PROMPT, KEY).forEach { canary ->
+        listOf(PROVIDER_MESSAGE, ORGANIZATION, PROMPT, KEY, TestKeys.TEAM_KEY).forEach { canary ->
             assertFalse(canary in text) { "$canary in the response: $text" }
             assertFalse(canary in output.all) { "$canary in the log" }
         }
@@ -129,7 +130,7 @@ class AnthropicNoLeakIntegrationTest : AnthropicBackedTest() {
         text: String,
         output: CapturedOutput,
     ) {
-        listOf(PROVIDER_MESSAGE, PROMPT, ARGUMENT, ANTHROPIC_KEY).forEach { canary ->
+        listOf(PROVIDER_MESSAGE, PROMPT, ARGUMENT, ANTHROPIC_KEY, TestKeys.TEAM_KEY).forEach { canary ->
             assertFalse(canary in text) { "$canary in the response: $text" }
             assertFalse(canary in output.all) { "$canary in the log" }
         }

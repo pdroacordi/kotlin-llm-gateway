@@ -20,4 +20,5 @@ object GatewayHeaders {
     // Must match logging.pattern.correlation in application.yaml.
     const val MDC_REQUEST_ID = "requestId"
     const val MDC_CLIENT_REQUEST_ID = "clientRequestId"
+    const val MDC_TEAM_ID = "teamId"
 }

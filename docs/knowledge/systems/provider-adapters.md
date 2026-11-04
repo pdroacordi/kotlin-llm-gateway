@@ -63,7 +63,6 @@ source_files:
   - gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/config/ProviderSelectionProperties.kt
   - gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/config/ProviderChecks.kt
   - gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/config/ProviderConfiguration.kt
-  - gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/security/LoopbackHostWebFilter.kt
 ---
 
 ## Summary
@@ -124,7 +123,7 @@ source_files:
 - **`warmUp()`** runs from each adapter's bean method, at startup, and does what the first requests would otherwise do on an event loop: `ReactiveFlowKt`'s `ServiceLoader` read, Jackson's first tree read and write, `HttpClient.warmup()`, and on Anthropic the SHA-256 digest. The tree read and write use Boot's `JsonMapper`, which `ChatHandler` shares.
 - **The pool.** One named `ConnectionProvider` per adapter (`UpstreamClient`), so one provider's stall cannot exhaust the other's, HTTP/1.1, `disableRetry(true)` (Reactor Netty otherwise repeats a request once on some connection resets; keep it, as no test can go red without it: JDK NIO reports "Connection reset", which Netty's retry condition does not match; so a provider that closes a pooled connection without `Connection: close` costs the next client a 502, [gotcha](../gotchas/pooled-connection-closed-without-connection-close-costs-a-502.md)), `pendingAcquireMaxCount` twice `max-connections`, eviction every 30 s. `close()` disposes it. The client's event loops (`reactor-http-*`) are not the server's (`webflux-http-*`), so a response crosses threads once.
 - **Usage.** `ChatCompletionService` keeps the provider's `Usage`, or asks `UsageEstimator` (length over 4 per text, 3 per message, 3 for the reply; an opaque part counts 0). `ChatHandler` adds `x-gateway-usage-estimated: true`; the body stays OpenAI-shaped. It writes bytes, not a tree, because `JacksonJsonEncoder` logs the value it encodes.
-- **Exposure, until GW-04.** `server.address` defaults to `127.0.0.1`. `ExposureGuard` stops the start on a non-loopback address unless `llmgw.security.allow-unauthenticated-exposure=true`. `LoopbackHostWebFilter`, right after `RequestContextWebFilter`, gives 403 to anything but `<loopback name>` or `<loopback name>:<digits>` in `Host`, because a DNS-rebinding page still sends its own ([bug](../bugs/grafana-anonymous-admin-reachable-through-dns-rebinding.md)). A cross-site POST is stopped by the required Content-Type (415 for a `no-cors` POST). A CORS preflight gets 200 from Spring with no `Access-Control-*` header, so a browser does not send the JSON POST.
+- **Exposure.** A team key is the control ([auth-and-teams](auth-and-teams.md)): a request reaches an adapter only after `AuthWebFilter`, and `ChatCall.team` is not forwarded to a provider. `server.address` defaults to `127.0.0.1`, and a non-loopback bind is not refused; TLS is the edge proxy's (ADR-GW-04-018). A CORS preflight under `/v1` is a 401 with no `Access-Control-*` header, so a browser does not send the JSON POST.
 - **What typed members change** (GW-01 section 4, "Narrower than OpenAI"). Request: an absent `content` goes upstream as `"content":null`. Response: an absent `content` or `finish_reason` becomes `null`, a `finish_reason` that is not a string becomes `null`, an `index` that is not an integer becomes `0`. Both ways: a number keeps its value, not its spelling (`1e5` becomes `1E+5`), and `-0.0` becomes `0.0`. `ChatRequestReaderTest`, `OpenAiResponseReaderTest`, `ChatCompletionsEndToEndTest`.
 
 ## Failure behaviour
@@ -162,7 +161,6 @@ Fail-closed: there is no answer to give.
 |---|---|---|
 | `server.address` | `${LLMGW_BIND_ADDRESS:127.0.0.1}` | ADR-GW-01-007 |
 | `spring.http.codecs.max-in-memory-size` | `10MB` | Request body limit |
-| `llmgw.security.allow-unauthenticated-exposure` | `false` | Removed by GW-04 |
 | `llmgw.providers.default-provider` | `openai` | Where a model no prefix claims goes; must be enabled |
 | `llmgw.providers.openai.enabled` | `true` | Written `true` or `false`; another spelling of true stops the start |
 | `llmgw.providers.openai.base-url` | `https://api.openai.com/v1` | `http` or `https`, a host, no user info; `LLMGW_PROVIDERS_OPENAI_BASE_URL` |
@@ -218,7 +216,7 @@ The `local` profile (`application-local.yaml`) points both providers at `http://
 - A chunk with empty `choices` and no `usage` is forwarded with its extras; only the one carrying `usage` is dropped for a client that did not ask.
 - `Flux.timeout(Publisher, Function)` has no `Duration` form with a factory: both arguments are publishers, so each item schedules a `Mono.delay` on `parallel`.
 - Inside `Socket().apply { }`, `port` is the socket's own, 0: an integration test hits `BindException`.
-- A `Host` Reactor Netty cannot parse (`[::1`, `[::1].evil.example`, `[::1]evil.example`, `127.0.0.1:evil`, `127.0.0.1:80@evil.example`, `localhost:`) gets its empty 400 before any filter runs: no envelope, no `x-request-id`, and the app is not reached. `127.0.0.1:123456`, `[localhost]` and two `Host` lines, in either order, reach `LoopbackHostWebFilter` and get 403 (`LoopbackHostSocketTest`; [gotcha](../gotchas/reactor-netty-refuses-an-unparsable-host-before-webflux.md)).
+- A `Host` Reactor Netty cannot parse (`[::1`, `[::1].evil.example`, `[::1]evil.example`, `127.0.0.1:evil`, `127.0.0.1:80@evil.example`, `localhost:`) gets its empty 400 before any filter runs: no envelope, no `x-request-id`, and the app is not reached ([gotcha](../gotchas/reactor-netty-refuses-an-unparsable-host-before-webflux.md)).
 - A good TLS handshake, real completions, streams and real 400, 401 and 404 bodies are proven live on OpenAI ([run](../runs/2026-11-04-live-openai.md)). Real in-band stream errors, 429 and 5xx bodies are not: they cannot be provoked on demand.
 - Nothing on the Anthropic path has met the real API. L1 to L4 of GW-03 section 8 are unproven, and what happens when a client drops `llmgw` in a tool turn on a default-thinking model is L1 (GW-11).
 - The mock cannot show a reply's number literals: its scripted `input` normalises first ([gotcha](../gotchas/mock-scripted-tool-input-normalises-number-literals.md)).

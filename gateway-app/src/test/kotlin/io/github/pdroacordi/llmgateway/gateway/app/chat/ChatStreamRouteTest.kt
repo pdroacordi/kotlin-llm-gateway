@@ -5,6 +5,7 @@ import io.github.pdroacordi.llmgateway.gateway.core.error.GatewayError
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.github.pdroacordi.llmgateway.gateway.core.error.toReply
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import org.awaitility.Awaitility.await
@@ -68,6 +69,7 @@ class ChatStreamRouteTest(
         val request =
             HttpRequest
                 .newBuilder(URI.create("http://127.0.0.1:$port$ROUTE$query"))
+                .header("Authorization", TestKeys.BEARER)
                 .header("Content-Type", "application/json")
                 .apply { accept?.let { header("Accept", it) } }
                 .POST(HttpRequest.BodyPublishers.ofString(body))
@@ -281,7 +283,7 @@ class ChatStreamRouteTest(
             socket.soTimeout = SOCKET_TIMEOUT_MS
             val request =
                 "POST $ROUTE$query HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n" +
-                    "Content-Length: ${STREAM.length}\r\nConnection: close\r\n\r\n$STREAM"
+                    "Authorization: ${TestKeys.BEARER}\r\nContent-Length: ${STREAM.length}\r\nConnection: close\r\n\r\n$STREAM"
             socket.getOutputStream().write(request.encodeToByteArray())
             socket.getInputStream().readAllBytes().decodeToString()
         }

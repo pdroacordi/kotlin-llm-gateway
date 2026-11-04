@@ -2,6 +2,7 @@ package io.github.pdroacordi.llmgateway.gateway.core.chat
 
 import io.github.pdroacordi.llmgateway.gateway.core.json.JsonValue
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Named.named
@@ -64,6 +65,7 @@ class ChatRequestTest {
         private val CALL =
             ChatCall(
                 RequestId(Uuid.parse("01890a5d-ac96-774b-bcce-b302099a8057")),
+                TestKeys.TEAM_ID,
                 DEPLOYMENT,
                 ChatRequest(
                     ModelName("m"),

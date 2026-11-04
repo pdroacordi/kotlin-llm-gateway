@@ -1,6 +1,7 @@
 package io.github.pdroacordi.llmgateway.gateway.app.request
 
 import io.github.pdroacordi.llmgateway.gateway.app.ProbeController
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
@@ -22,8 +23,10 @@ import org.springframework.test.web.reactive.server.WebTestClient
 @Import(ProbeController::class)
 @ExtendWith(OutputCaptureExtension::class)
 class RequestContextIntegrationTest(
-    @Autowired private val client: WebTestClient,
+    @Autowired private val unauthenticated: WebTestClient,
 ) {
+    private val client = unauthenticated.mutate().defaultHeader("Authorization", TestKeys.BEARER).build()
+
     @Test
     fun `actuator health carries a UUIDv7 request ID`() {
         val result = exchange("/actuator/health")
@@ -102,6 +105,20 @@ class RequestContextIntegrationTest(
         assertEquals(400, result.status.value())
         assertUuidV7(result.requestId())
         JsonPathExpectationsHelper("$.error.code").assertValue(result.bodyText(), "invalid_client_request_id")
+    }
+
+    @Test
+    fun `a 401 from the auth filter carries a gateway x-request-id`() {
+        val result =
+            unauthenticated
+                .get()
+                .uri("/v1/chat/completions")
+                .exchange()
+                .expectBody()
+                .returnResult()
+
+        assertEquals(401, result.status.value())
+        assertUuidV7(result.requestId())
     }
 
     private fun exchange(

@@ -14,12 +14,8 @@ private const val MAX_CAUSE_DEPTH = 32
 /**
  * Turns anything that escapes a request into a [GatewayError] (FND-04 section 4). Framework exceptions are matched by
  * the status they carry, not their class, so renames such as Spring 7's `ContentTooLargeException` do not matter.
- * [path] is the request path without its query string.
  */
-fun Throwable.toGatewayError(
-    method: String,
-    path: String,
-): GatewayError =
+fun Throwable.toGatewayError(method: String): GatewayError =
     when {
         this is GatewayErrorException -> {
             error
@@ -32,7 +28,7 @@ fun Throwable.toGatewayError(
         }
 
         this is ErrorResponse -> {
-            fromStatus(this, method, path)
+            fromStatus(this, method)
         }
 
         else -> {
@@ -45,7 +41,6 @@ fun Throwable.toGatewayError(
 private fun Throwable.fromStatus(
     response: ErrorResponse,
     method: String,
-    path: String,
 ): GatewayError =
     when (val status = response.statusCode.value()) {
         HttpStatus.BAD_REQUEST.value() -> {
@@ -57,7 +52,7 @@ private fun Throwable.fromStatus(
         }
 
         HttpStatus.NOT_FOUND.value() -> {
-            GatewayError.UnknownRoute(method, path)
+            GatewayError.UnknownRoute
         }
 
         HttpStatus.METHOD_NOT_ALLOWED.value() -> {

@@ -1,5 +1,6 @@
 package io.github.pdroacordi.llmgateway.gateway.app.chat
 
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -231,6 +232,7 @@ class ClosedProviderPortTest(
                 .build()
                 .post()
                 .uri(MockBackedTest.ROUTE)
+                .header("Authorization", TestKeys.BEARER)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(MockBackedTest.MINIMAL)
                 .exchange()

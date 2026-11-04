@@ -1,5 +1,6 @@
 package io.github.pdroacordi.llmgateway.gateway.app.chat
 
+import io.github.pdroacordi.llmgateway.gateway.app.auth.TeamContext
 import io.github.pdroacordi.llmgateway.gateway.app.error.GatewayErrorException
 import io.github.pdroacordi.llmgateway.gateway.app.error.StreamErrorFrames
 import io.github.pdroacordi.llmgateway.gateway.app.request.GatewayHeaders
@@ -9,6 +10,7 @@ import io.github.pdroacordi.llmgateway.gateway.app.web.readJsonObject
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatCompletionService
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatOutcome
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatRequest
+import io.github.pdroacordi.llmgateway.gateway.core.team.TeamId
 import io.github.pdroacordi.llmgateway.gateway.providers.json.exactTreeReader
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -33,14 +35,17 @@ class ChatHandler(
         val body = request.readJsonObject(trees)
         val chat = ChatRequestReader.read(body)
         val context = checkNotNull(currentCoroutineContext()[RequestContext]) { "no RequestContext on a chat request" }
-        return if (ChatRequestReader.wantsStream(body)) stream(context, chat) else answer(context, chat)
+        // A route the filter missed is then a 500, never an anonymous call (ADR-GW-04-009).
+        val team = checkNotNull(currentCoroutineContext()[TeamContext]) { "no TeamContext on a chat request" }.team
+        return if (ChatRequestReader.wantsStream(body)) stream(context, team, chat) else answer(context, team, chat)
     }
 
     private suspend fun answer(
         context: RequestContext,
+        team: TeamId,
         chat: ChatRequest,
     ): ServerResponse =
-        when (val outcome = service.complete(context.requestId, chat)) {
+        when (val outcome = service.complete(context.requestId, team, chat)) {
             is ChatOutcome.Answered -> ok(outcome)
             is ChatOutcome.Rejected -> throw GatewayErrorException(outcome.error)
         }
@@ -48,10 +53,11 @@ class ChatHandler(
     // Cold: the provider call starts when the response body is subscribed, after this returns.
     private suspend fun stream(
         context: RequestContext,
+        team: TeamId,
         chat: ChatRequest,
     ): ServerResponse {
         val log = ChatStreamLog(clock, context.requestId)
-        val events = service.stream(context.requestId, chat, log::end)
+        val events = service.stream(context.requestId, team, chat, log::end)
         val includeUsage = chat.streamOptions?.includeUsage == true
         // Without the Job, so asFlux's coroutine does not join a handler that returns before the body is written.
         val coroutine = currentCoroutineContext().minusKey(Job)

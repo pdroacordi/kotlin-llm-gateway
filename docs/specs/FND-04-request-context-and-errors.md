@@ -127,7 +127,7 @@ Responses that never reach WebFlux carry neither header nor envelope. Reactor Ne
 ### Error body
 
 ```json
-{"error":{"message":"Unknown request URL: GET /v1/x.","type":"invalid_request_error","param":null,"code":"unknown_url"}}
+{"error":{"message":"Unknown request URL.","type":"invalid_request_error","param":null,"code":"unknown_url"}}
 ```
 
 - `Content-Type: application/json`. Never `application/problem+json` (ADR-FND-04-005).
@@ -135,6 +135,7 @@ Responses that never reach WebFlux carry neither header nor envelope. Reactor Ne
 - `message` is for humans, in English. It never contains request content (bodies, query strings, header values other than the two IDs) or an exception message. A 5xx message ends with the request ID, as OpenAI's own 500 message does.
 - `code` is the stable machine-readable discriminator. `type` is a coarse class that mirrors the value OpenAI's API returns for the equivalent condition. The HTTP status is what OpenAI SDKs map to exception classes: 400 `BadRequestError`, 401 `AuthenticationError`, 403 `PermissionDeniedError`, 404 `NotFoundError`, 409 `ConflictError`, 422 `UnprocessableEntityError`, 429 `RateLimitError`, ≥ 500 `InternalServerError`.
 - **Stability rule:** once a (status, type, code) row ships it is never changed. A new condition gets a new code.
+- 2026-11-04 (GW-04): the `unknown_url` message no longer quotes the method and path, and `message` holds no path. The (status, type, code) row is unchanged. ADR-GW-04-020; section 5's `UnknownRoute(method, path)` and `toGatewayError(method, path)` are the design as first built.
 
 ### Implemented by FND-04
 
@@ -144,7 +145,7 @@ Responses that never reach WebFlux carry neither header nor envelope. Reactor Ne
 | Body not JSON or not the expected shape (`ServerWebInputException` caused by `DecodingException`) | `InvalidRequest` | 400 | `invalid_request_error` | `invalid_body` | `The request body could not be read as JSON of the expected shape.` | – |
 | Other `ServerWebInputException` (missing or mistyped value) | `InvalidRequest` | 400 | `invalid_request_error` | `invalid_request` | `The request is missing a required value or has a value of the wrong type.` | – |
 | Bad `x-client-request-id` (`RequestContextWebFilter`) | `InvalidRequest` | 400 | `invalid_request_error` | `invalid_client_request_id` | `The x-client-request-id header must be one value of 1 to 512 printable ASCII characters.` | – |
-| No handler for the path | `UnknownRoute(method, path)` | 404 | `invalid_request_error` | `unknown_url` | `Unknown request URL: <METHOD> <path>.` (path without query, first 200 characters) | – |
+| No handler for the path | `UnknownRoute` | 404 | `invalid_request_error` | `unknown_url` | `Unknown request URL.` | – |
 | Path matched, method not | `MethodNotAllowed(method, allowed)` | 405 | `invalid_request_error` | `method_not_allowed` | `Method <METHOD> is not allowed for this URL.` | `allow` |
 | `Accept` cannot be met | `NotAcceptable` | 406 | `invalid_request_error` | `not_acceptable` | `None of the media types in the Accept header can be produced by this endpoint.` | – |
 | Body over the codec limit (`ContentTooLargeException`, or a `ServerWebInputException` with `DataBufferLimitException` in its cause chain) | `ContentTooLarge` | 413 | `invalid_request_error` | `request_too_large` | `The request body is larger than this endpoint accepts.` | – |

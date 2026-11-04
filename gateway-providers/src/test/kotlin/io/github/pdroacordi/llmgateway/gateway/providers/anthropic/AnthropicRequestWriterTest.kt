@@ -13,6 +13,7 @@ import io.github.pdroacordi.llmgateway.gateway.core.chat.Role
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.github.pdroacordi.llmgateway.gateway.core.json.JsonValue
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import io.github.pdroacordi.llmgateway.gateway.providers.json.exactTreeReader
 import io.github.pdroacordi.llmgateway.gateway.providers.json.toJsonValue
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -44,7 +45,12 @@ class AnthropicRequestWriterTest {
     private fun call(
         messages: List<ChatMessage> = listOf(user()),
         extras: String = "{}",
-    ) = ChatCall(REQUEST_ID, DEPLOYMENT, ChatRequest(ModelName("client-model"), messages, obj(extras)))
+    ) = ChatCall(
+        REQUEST_ID,
+        TestKeys.TEAM_ID,
+        DEPLOYMENT,
+        ChatRequest(ModelName("client-model"), messages, obj(extras)),
+    )
 
     private fun body(
         messages: List<ChatMessage> = listOf(user()),

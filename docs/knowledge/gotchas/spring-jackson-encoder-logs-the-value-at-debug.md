@@ -4,9 +4,9 @@ type: gotcha
 title: Spring's Jackson encoder logs the value it encodes at DEBUG, and all of it at TRACE; the byte array encoder logs a size
 status: active
 tags: [spring, webflux, logging, secrets]
-related: [bugs/completion-text-in-spring-encoder-debug-log, systems/provider-adapters]
+related: [bugs/completion-text-in-spring-encoder-debug-log, bugs/unknown-route-message-echoes-the-path-into-the-debug-log, systems/provider-adapters]
 created: 2026-11-03
-updated: 2026-11-03
+updated: 2026-11-04
 source_files:
   - gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/chat/ChatHandler.kt
 ---
@@ -22,3 +22,7 @@ Probed with an `ObjectNode`: `Encoding [{"content":"canary-completion-canary-...
 ## How to handle it
 
 For a body that can hold prompt or completion text, serialise first and write `ByteArray`, as `OpenAiChatAdapter.kt:118` and `ChatHandler.kt:42` do.
+
+## Revision (2026-11-04)
+
+The error envelope goes through this encoder too, so anything a message quotes reaches this line: a key in the path of an unknown route did ([bug](../bugs/unknown-route-message-echoes-the-path-into-the-debug-log.md)). A message therefore holds no request content, rather than the mapper writing bytes.

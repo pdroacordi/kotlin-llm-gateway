@@ -6,7 +6,9 @@ import com.openai.errors.BadRequestException
 import com.openai.errors.InternalServerException
 import com.openai.errors.NotFoundException
 import com.openai.errors.RateLimitException
+import com.openai.errors.UnauthorizedException
 import com.openai.models.chat.completions.ChatCompletionCreateParams
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -23,7 +25,7 @@ class OpenAiSdkContractTest(
         OpenAIOkHttpClient
             .builder()
             .baseUrl("http://127.0.0.1:$port/v1")
-            .apiKey("client-key")
+            .apiKey(TestKeys.TEAM_KEY)
             .maxRetries(0)
             .responseValidation(true)
             .timeout(Duration.ofSeconds(30))
@@ -101,6 +103,15 @@ class OpenAiSdkContractTest(
         val failure = assertThrows<InternalServerException> { client.chat().completions().create(params) }
 
         assertEquals(502, failure.statusCode())
+    }
+
+    @Test
+    fun `a wrong key raises the SDK's authentication exception`() {
+        val stranger = client.withOptions { it.apiKey(TestKeys.UNKNOWN_KEY) }
+
+        val failure = assertThrows<UnauthorizedException> { stranger.chat().completions().create(params) }
+
+        assertEquals("invalid_api_key", failure.code().orElseThrow())
     }
 
     @Test

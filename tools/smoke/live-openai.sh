@@ -2,6 +2,7 @@
 # Paid check against the real OpenAI API: TLS, real bodies and real error shapes, which the mock cannot prove.
 # Costs under one US cent a run (three short completions; the error checks are refused before any tokens). Never in CI;
 # run it only with the user's go-ahead (CLAUDE.md, Testing). It starts its own gateway-app and stops it.
+# Needs compose Postgres: `docker compose -f deploy/compose.yaml up -d --wait postgres`.
 # Usage, from anywhere: bash tools/smoke/live-openai.sh
 # The key comes from .env at the repo root (gitignored, see .env.example). The file is read as KEY=VALUE, never
 # executed, and the key reaches only the gateway's environment: it is never printed or passed as an argument.
@@ -20,9 +21,15 @@ GATEWAY="http://127.0.0.1:$PORT"
 ROUTE="$GATEWAY/v1/chat/completions"
 CANARY="llmgw-live-canary-prompt"
 TMP="$(mktemp -d)"
+# Throwaway secrets of the gateway this script starts; compose Postgres holds its keys (ADR-GW-04-008).
+HMAC_SECRET="$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
+SMOKE_ADMIN_KEY="$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
 HEADERS="$TMP/headers"
 BODY="$TMP/body"
 gateway_pid=""
+
+# shellcheck source=tools/smoke/team-key.sh
+. "$(dirname "$0")/team-key.sh"
 
 stop_gateway() {
     [ -n "$gateway_pid" ] && kill "$gateway_pid" 2>/dev/null
@@ -103,6 +110,8 @@ start_gateway() {
         exit 2
     fi
     OPENAI_API_KEY="$1" LLMGW_PROVIDERS_OPENAI_BASE_URL="$BASE_URL" SERVER_PORT="$PORT" \
+        LLMGW_KEY_HMAC_SECRET="$HMAC_SECRET" LLMGW_ADMIN_KEY="$SMOKE_ADMIN_KEY" \
+        LLMGW_POSTGRES_PASSWORD="${LLMGW_POSTGRES_PASSWORD:-llmgw}" \
         "$JAVA" -jar "$ROOT/gateway-app/build/libs/gateway-app.jar" > "$2" 2>&1 &
     gateway_pid=$!
     local tries=0
@@ -123,8 +132,8 @@ clear_reply() { : > "$HEADERS"; : > "$BODY"; }
 # $1: JSON body. Sets status; the headers and body land in $HEADERS and $BODY.
 post() {
     clear_reply
-    status=$(curl -s --max-time 120 -D "$HEADERS" -o "$BODY" -w '%{http_code}' -H 'Content-Type: application/json' \
-        -d "$1" "$ROUTE")
+    status=$(curl -s --max-time 120 -D "$HEADERS" -o "$BODY" -w '%{http_code}' -H "@$TEAM_KEY_HEADER" \
+        -H 'Content-Type: application/json' -d "$1" "$ROUTE")
 }
 
 header() { tr -d '\r' < "$HEADERS" | sed -n "s/^$1: *//Ip" | tail -1; }
@@ -136,6 +145,7 @@ limit='"max_completion_tokens":16'
 echo "Base URL $BASE_URL, model $MODEL"
 LOG="$TMP/gateway.log"
 start_gateway "$KEY" "$LOG"
+team_key_create
 
 # 1. A real completion over real TLS.
 post "{\"model\":\"$MODEL\",$ask,$limit}"
@@ -153,7 +163,7 @@ if [ -n "$tokens" ] && [ "$tokens" -gt 0 ] 2>/dev/null; then pass "provider usag
 # 2. A real stream, with the client asking for usage.
 clear_reply
 timing=$(curl -s -N --max-time 120 -D "$HEADERS" -o "$BODY" -w '%{http_code} %{time_starttransfer} %{time_total}' \
-    -H 'Content-Type: application/json' \
+    -H "@$TEAM_KEY_HEADER" -H 'Content-Type: application/json' \
     -d "{\"model\":\"$MODEL\",$ask,$limit,\"stream\":true,\"stream_options\":{\"include_usage\":true}}" "$ROUTE")
 set -- $timing
 if [ "$1" = 200 ] && grep -q '^data: \[DONE\]' "$BODY"; then pass "stream ends in [DONE]"; else fail "stream ends in [DONE]" "status $1, error $(member code)"; fi
@@ -165,7 +175,7 @@ info "stream events" "$(grep -c '^data: ' "$BODY")"
 
 # 3. The same stream without usage: asked upstream anyway, not shown.
 clear_reply
-curl -s -N --max-time 120 -o "$BODY" -H 'Content-Type: application/json' \
+curl -s -N --max-time 120 -o "$BODY" -H "@$TEAM_KEY_HEADER" -H 'Content-Type: application/json' \
     -d "{\"model\":\"$MODEL\",$ask,$limit,\"stream\":true}" "$ROUTE"
 if lacks '"usage":{"prompt_tokens"' "$BODY"; then pass "usage stripped"; else fail "usage stripped" "a usage chunk reached the client, or no body"; fi
 grep -q '^data: \[DONE\]' "$BODY" && pass "stripped stream ends in [DONE]" || fail "stripped stream ends in [DONE]" "$(member code)"

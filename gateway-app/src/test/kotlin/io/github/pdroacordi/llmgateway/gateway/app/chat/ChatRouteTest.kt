@@ -5,6 +5,7 @@ import io.github.pdroacordi.llmgateway.gateway.core.error.GatewayError
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.github.pdroacordi.llmgateway.gateway.core.error.toReply
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -41,10 +42,12 @@ import kotlin.uuid.Uuid
 @Import(FakeChatModelPort.Wiring::class)
 @ExtendWith(OutputCaptureExtension::class)
 class ChatRouteTest(
-    @Autowired private val client: WebTestClient,
+    @Autowired unauthenticated: WebTestClient,
     @Autowired private val provider: FakeChatModelPort,
     @LocalServerPort private val port: Int,
 ) {
+    private val client = unauthenticated.mutate().defaultHeader("Authorization", TestKeys.BEARER).build()
+
     @BeforeEach
     fun resetProvider() {
         provider.reset()
@@ -154,14 +157,14 @@ class ChatRouteTest(
         client
             .post()
             .uri(ROUTE)
-            .header("Authorization", "Bearer client-key")
+            .header("Authorization", TestKeys.BEARER)
             .contentType(MediaType.APPLICATION_JSON)
             .bodyValue(MINIMAL)
             .exchange()
             .expectStatus()
             .isOk
 
-        assertFalse("client-key" in provider.calls.single().toString())
+        assertFalse(TestKeys.TEAM_KEY in provider.calls.single().toString())
     }
 
     @ParameterizedTest
@@ -185,10 +188,10 @@ class ChatRouteTest(
         assertTrue(provider.calls.isEmpty())
     }
 
-    // Spring answers a preflight before the route runs. With no CORS configuration it adds no allow header, so a
-    // browser does not send the POST.
+    // Spring answers a preflight before the route runs, once the key is checked. With no CORS configuration it adds no
+    // allow header, so a browser does not send the POST; AuthRouteTest has the case with no key.
     @Test
-    fun `a CORS preflight gets 200 with no allow header and no provider call`() {
+    fun `a CORS preflight with a key gets 200 with no allow header and no provider call`() {
         val result =
             client
                 .method(HttpMethod.OPTIONS)
@@ -234,6 +237,7 @@ class ChatRouteTest(
         val request =
             HttpRequest
                 .newBuilder(URI.create("http://127.0.0.1:$port$ROUTE"))
+                .header("Authorization", TestKeys.BEARER)
                 .header("Content-Type", "not a type")
                 .POST(HttpRequest.BodyPublishers.ofString(MINIMAL))
                 .build()

@@ -1,11 +1,10 @@
 package io.github.pdroacordi.llmgateway.gateway.app.config
 
-import io.github.pdroacordi.llmgateway.gateway.app.GatewayApplication
+import io.github.pdroacordi.llmgateway.gateway.app.isolatedGateway
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
-import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.boot.test.system.CapturedOutput
 import org.springframework.boot.test.system.OutputCaptureExtension
 
@@ -16,7 +15,7 @@ class ProviderLifecycleTest {
     fun `context shutdown closes each enabled adapter, once`(output: CapturedOutput) {
         val mark = output.length
         val context =
-            SpringApplicationBuilder(GatewayApplication::class.java).run(
+            isolatedGateway().run(
                 "--server.port=0",
                 "--llmgw.providers.anthropic.enabled=true",
                 "--llmgw.providers.anthropic.api-key=k",

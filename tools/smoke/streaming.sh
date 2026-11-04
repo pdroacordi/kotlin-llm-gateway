@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Exercises stream: true on POST /v1/chat/completions over real HTTP against mock-provider (GW-02 section 8, the
-# gateway-smoke skill). Needs gateway-app (profile `local`) and mock-provider already running; it never starts or stops
+# gateway-smoke skill). Needs gateway-app (profile `local`), mock-provider and compose Postgres already running; it never starts or stops
 # either, and it resets the mock. It calls no real provider: the `local` profile points the adapter at the mock.
 # Usage, from anywhere: bash tools/smoke/streaming.sh
 # Optional environment:
@@ -21,6 +21,9 @@ TMP="$(mktemp -d)"
 HEADERS="$TMP/headers"
 BODY="$TMP/body"
 trap 'rm -rf "$TMP"' EXIT
+
+# shellcheck source=tools/smoke/team-key.sh
+. "$(dirname "$0")/team-key.sh"
 
 failed=0
 pass() { echo "PASS $1"; }
@@ -50,7 +53,7 @@ post() {
     local body=$1
     shift
     STATUS=$(curl -sS -N --max-time 30 -o "$BODY" -D "$HEADERS" -w '%{http_code}' \
-        -H 'Content-Type: application/json' "$@" --data "$body" "$GATEWAY$ROUTE")
+        -H "@$TEAM_KEY_HEADER" -H 'Content-Type: application/json' "$@" --data "$body" "$GATEWAY$ROUTE")
     EXIT=$?
 }
 header() { tr -d '\r' <"$HEADERS" | sed -n "s/^$1: *//Ip" | tail -1; }
@@ -81,6 +84,7 @@ reset_mock || {
     echo "FAIL preflight: no mock at $MOCK"
     exit 1
 }
+team_key_create
 
 # 1. Headers.
 scenario '{"otherwise":{"content":{"mode":"fixed","text":"Hi there"}}}'
@@ -128,7 +132,7 @@ check_lacks "4 omitted, silent: no chunk" "$BODY" "\"$EXTENSION\""
 
 # 5. Spread: at least 600 ms between the first and the last piece.
 scenario '{"otherwise":{"latency":{"perTokenMs":200},"content":{"mode":"fixed","text":"one two three four five six"}}}'
-curl -sS -N --max-time 10 -H 'Content-Type: application/json' --data "$(stream_body)" "$GATEWAY$ROUTE" |
+curl -sS -N --max-time 10 -H "@$TEAM_KEY_HEADER" -H 'Content-Type: application/json' --data "$(stream_body)" "$GATEWAY$ROUTE" |
     while IFS= read -r line; do
         case "$line" in *'"content":"'[!\"]*) date +%s%3N ;; esac
     done >"$TMP/arrivals"
@@ -177,7 +181,7 @@ fi
 
 # 9. Disconnect.
 scenario "{\"otherwise\":{\"latency\":{\"perTokenMs\":100},\"content\":{\"mode\":\"fixed\",\"text\":\"$(printf 'word %.0s' {1..50})\"}}}"
-curl -sS -N --max-time 1 -D "$HEADERS" -o "$BODY" -H 'Content-Type: application/json' --data "$(stream_body)" \
+curl -sS -N --max-time 1 -D "$HEADERS" -o "$BODY" -H "@$TEAM_KEY_HEADER" -H 'Content-Type: application/json' --data "$(stream_body)" \
     "$GATEWAY$ROUTE"
 ID=$(header x-request-id)
 if await_outcome "$ID" client_cancelled; then pass "9 client_cancelled"; else fail "9 client_cancelled" "$(outcome "$ID")"; fi
@@ -218,14 +222,15 @@ check "11 lastSeq unchanged" "$(last_seq)" "$before"
 reset_mock
 scenario '{"otherwise":{"content":{"mode":"fixed","text":"Hi"}}}'
 first_byte() {
-    local url=$1 auth=$2
+    local url=$1
+    shift
     for _ in $(seq 50); do
         curl -sS -o /dev/null -w '%{time_starttransfer}\n' --max-time 5 -H 'Content-Type: application/json' \
-            -H "Authorization: Bearer $auth" --data "$(stream_body)" "$url"
+            "$@" --data "$(stream_body)" "$url"
     done
 }
-VIA=$(first_byte "$GATEWAY$ROUTE" smoke | median_ms)
-DIRECT=$(first_byte "$MOCK$ROUTE" smoke | median_ms)
+VIA=$(first_byte "$GATEWAY$ROUTE" -H "@$TEAM_KEY_HEADER" | median_ms)
+DIRECT=$(first_byte "$MOCK$ROUTE" -H "Authorization: Bearer smoke" | median_ms)
 echo "INFO 13 time to first chunk: gateway $VIA ms, direct $DIRECT ms (medians of 50)"
 
 reset_mock

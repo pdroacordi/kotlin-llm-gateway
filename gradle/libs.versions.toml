@@ -34,6 +34,17 @@ spring-context = { module = "org.springframework:spring-context" }
 reactor-netty-http = { module = "io.projectreactor.netty:reactor-netty-http" }
 jackson-databind = { module = "tools.jackson.core:jackson-databind" }
 slf4j-api = { module = "org.slf4j:slf4j-api" }
+# Versionless: Spring Boot's BOM manages them (GW-04). The driver and Caffeine are for gateway-infra, the starters
+# and the Flyway database support for gateway-app.
+spring-r2dbc = { module = "org.springframework:spring-r2dbc" }
+r2dbc-postgresql = { module = "org.postgresql:r2dbc-postgresql" }
+r2dbc-pool = { module = "io.r2dbc:r2dbc-pool" }
+caffeine = { module = "com.github.ben-manes.caffeine:caffeine" }
+spring-boot-starter-r2dbc = { module = "org.springframework.boot:spring-boot-starter-r2dbc" }
+spring-boot-starter-flyway = { module = "org.springframework.boot:spring-boot-starter-flyway" }
+flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
+flyway-core = { module = "org.flywaydb:flyway-core" }
+awaitility = { module = "org.awaitility:awaitility" }
 # The official SDK, in gateway-app's integrationTest only: a real parser and real exception classes (ADR-GW-01-009).
 openai-java = { module = "com.openai:openai-java", version.ref = "openai-java" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }

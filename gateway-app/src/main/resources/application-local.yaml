@@ -1,4 +1,15 @@
+spring:
+  # The compose password; a local-only credential on a loopback port, not a secret (ADR-GW-04-016).
+  r2dbc:
+    password: ${LLMGW_POSTGRES_PASSWORD:llmgw}
+  flyway:
+    password: ${LLMGW_POSTGRES_PASSWORD:llmgw}
+
 llmgw:
+  auth:
+    # Fixed fakes, public by design: `local` holds no real provider key (ADR-GW-04-016).
+    hmac-secret: local-profile-hmac-secret-not-a-secret
+    admin-key: local-profile-admin-key-not-a-secret
   providers:
     openai:
       base-url: http://127.0.0.1:8090/v1

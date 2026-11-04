@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Exercises the Anthropic adapter over real HTTP against mock-provider (GW-03 section 8, the gateway-smoke skill). Needs
-# gateway-app (profile `local`) and mock-provider already running; it never starts or stops either, and it resets the
+# gateway-app (profile `local`), mock-provider and compose Postgres already running; it never starts or stops either, and it resets the
 # mock. It calls no real provider: the `local` profile points both adapters at the mock.
 # Usage, from anywhere: bash tools/smoke/anthropic.sh
 # Optional environment:
@@ -20,6 +20,9 @@ TMP="$(mktemp -d)"
 HEADERS="$TMP/headers"
 BODY="$TMP/body"
 trap 'rm -rf "$TMP"' EXIT
+
+# shellcheck source=tools/smoke/team-key.sh
+. "$(dirname "$0")/team-key.sh"
 
 failed=0
 pass() { echo "PASS $1"; }
@@ -44,7 +47,7 @@ check_lacks() {
 # Sets $STATUS and fills $HEADERS and $BODY.
 post() {
     STATUS=$(curl -sS -N --max-time 30 -o "$BODY" -D "$HEADERS" -w '%{http_code}' \
-        -H 'Content-Type: application/json' --data "$1" "$GATEWAY$ROUTE")
+        -H "@$TEAM_KEY_HEADER" -H 'Content-Type: application/json' --data "$1" "$GATEWAY$ROUTE")
 }
 header() { tr -d '\r' <"$HEADERS" | sed -n "s/^$1: *//Ip" | tail -1; }
 scenario() {
@@ -73,6 +76,7 @@ reset_mock || {
     echo "FAIL preflight: no mock at $MOCK"
     exit 1
 }
+team_key_create
 
 # 1. Text, both forms.
 scenario '{"otherwise":{"content":{"mode":"fixed","text":"Hi there"}}}'
@@ -93,7 +97,7 @@ check_has "1 role on the first delta" "$BODY" '"role":"assistant"'
 check "1 last frame" "$(grep -v '^$' "$BODY" | tail -1)" "data: [DONE]"
 scenario '{"otherwise":{"latency":{"perTokenMs":100},"content":{"mode":"fixed","text":"a b c d e f g h i j"}}}'
 TIMES=$(curl -sS -N --max-time 30 -o /dev/null -w '%{time_starttransfer} %{time_total}' \
-    -H 'Content-Type: application/json' --data "$(body ',"stream":true')" "$GATEWAY$ROUTE")
+    -H "@$TEAM_KEY_HEADER" -H 'Content-Type: application/json' --data "$(body ',"stream":true')" "$GATEWAY$ROUTE")
 if echo "$TIMES" | awk '{ exit !($1 < $2 / 2) }'; then
     pass "1 frames spread"
 else
@@ -147,6 +151,10 @@ done <<'ROWS'
 "stop":7 unsupported_value
 "tool_choice":{"type":"custom"} unsupported_value
 ROWS
+post "$(body ",\"parallel_tool_calls\":\"x\",$TOOLS")"
+check "4 parallel_tool_calls not a boolean status" "$STATUS" 400
+check_has "4 parallel_tool_calls not a boolean code" "$BODY" '"code":"unsupported_value"'
+check_has "4 parallel_tool_calls not a boolean param" "$BODY" '"param":"parallel_tool_calls"'
 check "4 no upstream call" "$(last_seq)" "$BEFORE"
 
 # 5. The status table: a stream fails the same way before its first frame.
@@ -234,12 +242,20 @@ journal "$(header x-request-id)" >"$TMP/entry"
 check_has "7 blocks first upstream" "$TMP/entry" \
     '{\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"sig-1\"},{\"type\":\"redacted_thinking\",\"data\":\"opaque-1\"},{\"type\":\"text\",\"text\":\"b\"}]}'
 check_lacks "7 no llmgw upstream" "$TMP/entry" 'llmgw'
+upstream_body() { journal "$(header x-request-id)" | grep -oE '"body":"([^"\]|\.)*"'; }
+post "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"a\"},{\"role\":\"assistant\",\"content\":\"b\"},{\"role\":\"user\",\"content\":\"c\"}]}"
+upstream_body >"$TMP/plain"
+post "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"a\"},{\"role\":\"assistant\",\"content\":\"b\",\"llmgw\":{\"thinking_blocks\":null}},{\"role\":\"user\",\"content\":\"c\"}]}"
+check "7 null blocks status" "$STATUS" 200
+upstream_body >"$TMP/nulled"
+check_has "7 null blocks reached the mock" "$TMP/nulled" '\"role\":\"assistant\"'
+check "7 null blocks count as absent" "$(cat "$TMP/nulled")" "$(cat "$TMP/plain")"
 
 # 8. Disconnect mid-stream.
 reset_mock
 WORDS=$(printf 'word %.0s' $(seq 1 200))
 scenario "{\"otherwise\":{\"latency\":{\"perTokenMs\":50},\"content\":{\"mode\":\"fixed\",\"text\":\"$WORDS\"}}}"
-curl -s -N --max-time 1 -o /dev/null -D "$HEADERS" -H 'Content-Type: application/json' \
+curl -s -N --max-time 1 -o /dev/null -D "$HEADERS" -H "@$TEAM_KEY_HEADER" -H 'Content-Type: application/json' \
     --data "$(body ',"stream":true')" "$GATEWAY$ROUTE"
 if await_outcome "$(header x-request-id)" client_cancelled; then
     pass "8 client_cancelled"

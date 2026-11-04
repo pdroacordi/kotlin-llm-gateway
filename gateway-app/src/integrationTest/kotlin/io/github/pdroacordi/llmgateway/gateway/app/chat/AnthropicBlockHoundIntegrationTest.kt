@@ -1,5 +1,6 @@
 package io.github.pdroacordi.llmgateway.gateway.app.chat
 
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
@@ -20,7 +21,13 @@ import java.time.Duration
 @ExtendWith(OutputCaptureExtension::class)
 @TestPropertySource(properties = ["llmgw.test.context=anthropic-blockhound"])
 class AnthropicBlockHoundIntegrationTest : AnthropicBackedTest() {
-    private val client by lazy { WebClient.create("http://127.0.0.1:$port") }
+    private val client by lazy {
+        WebClient
+            .builder()
+            .baseUrl("http://127.0.0.1:$port")
+            .defaultHeader("Authorization", TestKeys.BEARER)
+            .build()
+    }
 
     private fun call(index: Int): Mono<Int> {
         val body = if (index % 2 == 0) COMPLETE else STREAMED

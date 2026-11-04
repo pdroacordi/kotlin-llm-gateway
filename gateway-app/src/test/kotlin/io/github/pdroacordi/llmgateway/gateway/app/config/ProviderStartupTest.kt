@@ -1,6 +1,6 @@
 package io.github.pdroacordi.llmgateway.gateway.app.config
 
-import io.github.pdroacordi.llmgateway.gateway.app.GatewayApplication
+import io.github.pdroacordi.llmgateway.gateway.app.isolatedGateway
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatModelPort
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ModelName
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ModelResolver
@@ -16,7 +16,6 @@ import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
-import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.boot.test.system.CapturedOutput
 import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.context.ConfigurableApplicationContext
@@ -25,7 +24,7 @@ import org.springframework.context.ConfigurableApplicationContext
 @ExtendWith(OutputCaptureExtension::class)
 class ProviderStartupTest {
     private fun context(vararg args: String): ConfigurableApplicationContext =
-        SpringApplicationBuilder(GatewayApplication::class.java).run("--server.port=0", *args)
+        isolatedGateway().run("--server.port=0", *args)
 
     private fun failure(vararg args: String): String =
         generateSequence(assertThrows<Throwable> { context(*args).close() }) { it.cause }

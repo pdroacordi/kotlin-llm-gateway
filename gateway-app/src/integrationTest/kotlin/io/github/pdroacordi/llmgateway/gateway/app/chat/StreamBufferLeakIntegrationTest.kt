@@ -1,5 +1,6 @@
 package io.github.pdroacordi.llmgateway.gateway.app.chat
 
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import io.netty.util.ResourceLeakDetector
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -21,7 +22,13 @@ import java.time.Duration
  */
 @ExtendWith(OutputCaptureExtension::class)
 class StreamBufferLeakIntegrationTest : AnthropicBackedTest() {
-    private val client by lazy { WebClient.create("http://127.0.0.1:$port") }
+    private val client by lazy {
+        WebClient
+            .builder()
+            .baseUrl("http://127.0.0.1:$port")
+            .defaultHeader("Authorization", TestKeys.BEARER)
+            .build()
+    }
 
     private fun stream(
         frames: Long,

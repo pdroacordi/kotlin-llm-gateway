@@ -1,6 +1,7 @@
 package io.github.pdroacordi.llmgateway.gateway.app.chat
 
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ProviderStreamEvent
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import org.awaitility.Awaitility.await
@@ -104,7 +105,7 @@ class SlowClientStreamTest(
         const val BODY = """{"model":"mock-chat","messages":[{"role":"user","content":"Hi"}],"stream":true}"""
         const val REQUEST =
             "POST $ROUTE HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n" +
-                "Content-Length: ${BODY.length}\r\n\r\n$BODY"
+                "Authorization: ${TestKeys.BEARER}\r\nContent-Length: ${BODY.length}\r\n\r\n$BODY"
         const val LF = 10
         const val RECEIVE_BUFFER = 4096
         const val READ_TIMEOUT_MS = 10_000

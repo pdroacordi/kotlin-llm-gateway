@@ -1,6 +1,6 @@
 package io.github.pdroacordi.llmgateway.gateway.app.config
 
-import io.github.pdroacordi.llmgateway.gateway.app.GatewayApplication
+import io.github.pdroacordi.llmgateway.gateway.app.isolatedGateway
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -8,7 +8,6 @@ import org.junit.jupiter.api.assertDoesNotThrow
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
-import org.springframework.boot.builder.SpringApplicationBuilder
 import java.time.Duration
 
 class ServerStreamPropertiesTest {
@@ -42,7 +41,7 @@ class ServerStreamPropertiesTest {
     fun `startup refuses a write timeout at idle-timeout`() {
         val failure =
             assertThrows<Throwable> {
-                SpringApplicationBuilder(GatewayApplication::class.java)
+                isolatedGateway()
                     .run(
                         "--server.port=0",
                         "--llmgw.server.client-write-timeout=60s",

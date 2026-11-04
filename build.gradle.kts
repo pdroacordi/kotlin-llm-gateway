@@ -6,6 +6,7 @@ plugins {
 dependencies {
     kover(project(":gateway-core"))
     kover(project(":gateway-providers"))
+    kover(project(":gateway-infra"))
     kover(project(":gateway-app"))
     kover(project(":mock-provider"))
 }

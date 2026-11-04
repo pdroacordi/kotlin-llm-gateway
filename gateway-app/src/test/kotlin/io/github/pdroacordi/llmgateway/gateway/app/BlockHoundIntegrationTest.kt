@@ -4,6 +4,8 @@ import io.github.pdroacordi.llmgateway.gateway.app.chat.FakeChatModelPort
 import io.github.pdroacordi.llmgateway.gateway.app.request.GatewayHeaders
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ProviderStreamEvent
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestIdGenerator
+import io.github.pdroacordi.llmgateway.gateway.core.team.KeyHasher
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.reactor.awaitSingle
 import org.awaitility.Awaitility.await
@@ -49,8 +51,14 @@ class BlockHoundIntegrationTest(
     @Autowired private val ids: RequestIdGenerator,
     @Autowired private val clock: ThreadRecordingClock,
     @Autowired private val provider: FakeChatModelPort,
+    @Autowired private val hasher: KeyHasher,
 ) {
-    private val client = WebClient.create("http://127.0.0.1:$port")
+    private val client =
+        WebClient
+            .builder()
+            .baseUrl("http://127.0.0.1:$port")
+            .defaultHeader("Authorization", TestKeys.BEARER)
+            .build()
 
     class ThreadRecordingClock(
         private val delegate: Clock,
@@ -208,6 +216,19 @@ class BlockHoundIntegrationTest(
             Mono
                 .fromCallable {
                     repeat(DRAWS) { ids.next() }
+                    Thread.currentThread()
+                }.subscribeOn(Schedulers.parallel())
+                .block(BLOCK_LIMIT)
+
+        assertTrue(thread != null && Schedulers.isNonBlockingThread(thread)) { thread?.name.orEmpty() }
+    }
+
+    @Test
+    fun `KeyHasher digest passes BlockHound on a non-blocking thread`() {
+        val thread =
+            Mono
+                .fromCallable {
+                    repeat(DRAWS) { hasher.digest(TestKeys.TEAM_KEY) }
                     Thread.currentThread()
                 }.subscribeOn(Schedulers.parallel())
                 .block(BLOCK_LIMIT)

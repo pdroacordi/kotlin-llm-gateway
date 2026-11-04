@@ -2,6 +2,7 @@ package io.github.pdroacordi.llmgateway.gateway.core.chat
 
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -40,7 +41,7 @@ class ChatCompletionServiceStreamTest {
         ChatCompletionService({ DEPLOYMENT.copy(model = it) }, port, UsageEstimator())
 
     private fun stream(port: ChatModelPort): Flow<ChatStreamEvent> =
-        service(port).stream(REQUEST_ID, REQUEST) { summaries += it }
+        service(port).stream(REQUEST_ID, TestKeys.TEAM_ID, REQUEST) { summaries += it }
 
     @Test
     fun `the flow is cold, no port call before collection`() =
@@ -61,7 +62,7 @@ class ChatCompletionServiceStreamTest {
 
             stream(port).collect()
 
-            assertEquals(listOf(ChatCall(REQUEST_ID, DEPLOYMENT, REQUEST)), port.calls)
+            assertEquals(listOf(ChatCall(REQUEST_ID, TestKeys.TEAM_ID, DEPLOYMENT, REQUEST)), port.calls)
         }
 
     @Test

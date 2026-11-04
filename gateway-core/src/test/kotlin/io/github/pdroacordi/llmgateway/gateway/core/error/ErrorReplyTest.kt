@@ -14,7 +14,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
-// One case per row of FND-04 section 4, "Implemented by FND-04", and of GW-01 section 4.
+// One case per row of FND-04 section 4, "Implemented by FND-04", of GW-01 section 4 and of GW-04 section 4.
 class ErrorReplyTest {
     @ParameterizedTest(name = "{0}")
     @MethodSource("rows")
@@ -37,15 +37,6 @@ class ErrorReplyTest {
         val reply = GatewayError.Internal.toReply(REQUEST_ID)
 
         assertTrue(reply.message.contains(REQUEST_ID.toString())) { reply.message }
-    }
-
-    @Test
-    fun `the unknown-URL message keeps only the first 200 characters of the path`() {
-        val path = "/" + "a".repeat(300)
-
-        val reply = GatewayError.UnknownRoute("GET", path).toReply(REQUEST_ID)
-
-        assertEquals("Unknown request URL: GET ${path.take(200)}.", reply.message)
     }
 
     @ParameterizedTest
@@ -172,8 +163,8 @@ class ErrorReplyTest {
                     ),
                 ),
                 Arguments.of(
-                    named("unknown route", GatewayError.UnknownRoute("GET", "/v1/does-not-exist")),
-                    ErrorReply(404, "Unknown request URL: GET /v1/does-not-exist.", INVALID, null, "unknown_url"),
+                    named("unknown route", GatewayError.UnknownRoute),
+                    ErrorReply(404, "Unknown request URL.", INVALID, null, "unknown_url"),
                 ),
                 Arguments.of(
                     named("method not allowed", GatewayError.MethodNotAllowed("GET", setOf("POST"))),
@@ -399,6 +390,54 @@ class ErrorReplyTest {
                         "stream_options",
                         "invalid_request",
                     ),
+                ),
+                Arguments.of(
+                    named("missing API key", Unauthenticated.MissingKey),
+                    ErrorReply(
+                        401,
+                        "Missing API key. Send it as Authorization: Bearer <key>.",
+                        INVALID,
+                        null,
+                        "missing_api_key",
+                        mapOf("www-authenticate" to "Bearer"),
+                    ),
+                ),
+                Arguments.of(
+                    named("invalid API key", Unauthenticated.InvalidKey),
+                    ErrorReply(
+                        401,
+                        "The API key is invalid.",
+                        INVALID,
+                        null,
+                        "invalid_api_key",
+                        mapOf("www-authenticate" to "Bearer error=\"invalid_token\""),
+                    ),
+                ),
+                Arguments.of(
+                    named("team store unavailable", TeamStoreFailure.Unavailable),
+                    ErrorReply(
+                        503,
+                        "The gateway cannot reach its team store. $REPORT",
+                        SERVER,
+                        null,
+                        "team_store_unavailable",
+                    ),
+                ),
+                Arguments.of(
+                    named("team not found", TeamStoreFailure.TeamNotFound),
+                    ErrorReply(404, "No such team.", INVALID, null, "team_not_found"),
+                ),
+                Arguments.of(
+                    named("key not found", TeamStoreFailure.KeyNotFound),
+                    ErrorReply(404, "No such key.", INVALID, null, "key_not_found"),
+                ),
+                Arguments.of(
+                    named("team name taken", TeamStoreFailure.TeamNameTaken),
+                    ErrorReply(409, "A team with this name exists.", INVALID, "name", "team_name_taken"),
+                ),
+                Arguments.of(
+                    named("key name taken", TeamStoreFailure.KeyNameTaken),
+                    ErrorReply(409, "This team has an active key with this name.", INVALID, "name", "key_name_taken"),
                 ),
             )
     }

@@ -13,6 +13,7 @@ import io.github.pdroacordi.llmgateway.gateway.core.chat.Role
 import io.github.pdroacordi.llmgateway.gateway.core.chat.StreamOptions
 import io.github.pdroacordi.llmgateway.gateway.core.json.JsonValue
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import tools.jackson.databind.json.JsonMapper
@@ -27,7 +28,7 @@ class OpenAiRequestWriterTest {
         extras: JsonValue.Object = JsonValue.Object.EMPTY,
     ): String {
         val request = ChatRequest(ModelName("client-model"), listOf(message), extras)
-        val call = ChatCall(REQUEST_ID, DEPLOYMENT, request)
+        val call = ChatCall(REQUEST_ID, TestKeys.TEAM_ID, DEPLOYMENT, request)
         return mapper.writeValueAsString(OpenAiRequestWriter.write(call, JsonNodeFactory.instance))
     }
 
@@ -143,7 +144,7 @@ class OpenAiRequestWriterTest {
                 JsonValue.Object(mapOf("seed" to JsonValue.Number("7"))),
                 options,
             )
-        val call = ChatCall(REQUEST_ID, DEPLOYMENT, request)
+        val call = ChatCall(REQUEST_ID, TestKeys.TEAM_ID, DEPLOYMENT, request)
         return mapper.writeValueAsString(OpenAiRequestWriter.writeStream(call, JsonNodeFactory.instance))
     }
 

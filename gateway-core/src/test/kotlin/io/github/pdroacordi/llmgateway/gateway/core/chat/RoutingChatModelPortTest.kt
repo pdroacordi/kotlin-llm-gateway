@@ -2,6 +2,7 @@ package io.github.pdroacordi.llmgateway.gateway.core.chat
 
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -24,6 +25,7 @@ class RoutingChatModelPortTest {
     private fun call(provider: ProviderId): ChatCall =
         ChatCall(
             RequestId(Uuid.parse("01890a5d-ac96-774b-bcce-b302099a8057")),
+            TestKeys.TEAM_ID,
             Deployment(DeploymentId(provider.value), provider, ModelName("m")),
             ChatRequest(ModelName("m"), listOf(ChatMessage(Role("user"), MessageContent.Text("Hi")))),
         )

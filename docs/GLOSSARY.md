@@ -4,13 +4,14 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 
 | Term | Meaning | Code identifier |
 |---|---|---|
+| Admin key | The one operator credential, from `LLMGW_ADMIN_KEY`, that opens `/admin`. Never valid on `/v1`. | `OperatorAuthenticator`, `AuthProperties.adminKey` |
 | Agent | A registered definition of an LLM-driven worker: model alias, instructions, tools, limits. | `AgentDefinition` |
 | Agent version | An immutable snapshot of an agent definition. A run pins one version. | `AgentVersion` |
-| API key | The secret a team presents on every request. Stored as an HMAC, shown once at creation. | `ApiKey` |
+| API key | Ambiguous, so the code avoids it: a client presents a team key, and an adapter presents a provider key. The class `ApiKey` is only the provider key. | see Team key, Provider key |
 | Budget | A spend limit for a team over a period. Soft: alert. Hard: reject or downgrade (RTE-04). | `Budget` |
 | Cache hit (exact) | A response served because a normalized request with the same key was stored before. | `CacheOutcome.EXACT_HIT` |
 | Cache hit (semantic) | A response served because a stored request is similar enough (above the threshold) in embedding space. | `CacheOutcome.SEMANTIC_HIT` |
-| Chat call | One provider call with its request ID, deployment and request. | `ChatCall` |
+| Chat call | One provider call with its request ID, team, deployment and request. | `ChatCall` |
 | Chat chunk | One streamed delta, translated from the provider's event. | `ChatChunk` |
 | Circuit breaker | Per-deployment switch that stops sending traffic after repeated failures and probes before closing again. | `DeploymentHealth` |
 | Client request ID | A client's own correlation ID, sent in `x-client-request-id` (1 to 512 printable ASCII characters), echoed and logged; never used as the request ID. | `ClientRequestId` |
@@ -23,6 +24,8 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 | Fail-open / fail-closed | What a stage does when its own dependency fails: let the request through, or reject it. Declared per rule. | `FailureMode` |
 | Fallback chain | Ordered deployments tried for one request, only before the first byte reaches the client (before `Started`). | `FallbackChain` |
 | Guardrail | A rule applied to input or output, with a verdict: allow, redact or block. | `GuardrailRule`, `GuardrailVerdict` |
+| Key digest | The HMAC-SHA-256 of a team key, 32 bytes: the only form stored, and the lookup key of the store and its cache. Never in a response or a log. | `KeyDigest`, `KeyHasher` |
+| Key hint | The first 10 characters of a team key, `llmgw_` and 4 secret ones, shown in lists so a person can tell keys apart. | `TeamKey.hint`, `key_hint` |
 | Ledger | Append-only record of the cost of every call, written from usage events. | `LedgerEntry` |
 | Local stack | The seven development services in `deploy/compose.yaml` (Postgres, Redis, Redpanda, OTel collector, Jaeger, Prometheus, Grafana) on loopback ports from `LLMGW_*_PORT`; project `llmgw` unless `COMPOSE_PROJECT_NAME` says otherwise. | `deploy/compose.yaml` |
 | Member policy | The rule an adapter holds, as data, for each member of the OpenAI request when its provider has another shape: translate, forward, ignore, ignore a default value, or reject. An unlisted member is rejected. | `AnthropicMemberPolicy`, `MemberRule` |
@@ -35,7 +38,9 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 | Price catalog | Per-model prices for input, output and cached-input tokens, with effective dates. | `PriceCatalog` |
 | Provider | An upstream LLM API vendor (OpenAI, Anthropic, a local server). | `Provider` |
 | Provider failure | The sealed failures a provider call can end in, each one error row. | `ProviderFailure` |
+| Provider key | The credential an adapter presents to a provider, from the environment. | `ApiKey` |
 | Provider selection | Picking the adapter for a deployment: the resolver names the provider, and the routing port delegates to its adapter. A provider with no adapter is `model_not_found`. | `RoutingChatModelPort`, `ProviderSelectionProperties` |
+| Published secret | A value of `application-local.yaml`, public by design, refused as the HMAC secret or admin key past loopback. | `PublishedSecrets` |
 | Rate limit | A cap on requests or tokens per time window for a team. | `RateLimitPolicy` |
 | Request ID | The gateway-generated UUIDv7 for one call, returned in `x-request-id`; the key that ties a response, its log lines, its span and its ledger row. Never the trace ID. | `RequestId` |
 | Request journal | The mock provider's bounded, redacted log of the requests it received, with its arrival counter (`lastSeq`) and per-route, per-model counts; read over `/__mock/requests` and `/__mock/stats`. | `RequestJournal` |
@@ -52,6 +57,9 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 | Stream summary | How a stream ended and its usage, reported once. | `StreamSummary` |
 | Supervisor | Orchestration pattern where one agent decides which agent acts next. | `SupervisorPattern` |
 | Team | The tenant: owns keys, limits, budgets, routes and policies. Every request resolves to one. | `Team` |
+| Team context | The coroutine element holding the team, present only on an authenticated `/v1` request, so its presence is the proof. | `TeamContext` |
+| Team key | The secret a team presents on every `/v1` request: `llmgw_` plus 43 base64url characters. Stored as a key digest, shown once at creation. | `TeamKeySecret`, `TeamKey` |
+| Team store | The port for teams and keys: Postgres behind a Caffeine cache, the source of truth for who may call. | `TeamStorePort`, `PostgresTeamStore`, `CachingTeamStore` |
 | Thinking block | A provider reasoning block with an opaque signature, never put in `content`. A reply carries it in `llmgw.thinking_blocks`; a client echoes it on the assistant message in a tool loop. | `HeldThinking` |
 | Tool | A registered HTTP capability an agent can call, described by a JSON schema, on an allowlisted host. | `ToolDefinition` |
 | TTFT | Time to first token: from request receipt to the first streamed chunk sent. | `ttftMs` in the end-of-stream line, until OBS-02's `ttft` metric |

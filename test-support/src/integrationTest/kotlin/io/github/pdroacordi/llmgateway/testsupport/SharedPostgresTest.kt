@@ -55,6 +55,32 @@ class SharedPostgresTest {
         }
     }
 
+    @Test
+    @Order(4)
+    fun `database creates a separate database reachable with the returned coordinates`() {
+        val database = SharedPostgres.database("shared_postgres_test")
+
+        DriverManager.getConnection(database.jdbcUrl, database.username, database.password).use { connection ->
+            connection.createStatement().use { statement ->
+                statement.executeQuery("select current_database()").use { result ->
+                    assertTrue(result.next())
+                    assertEquals("shared_postgres_test", result.getString(1))
+                }
+            }
+        }
+        assertTrue(database.r2dbcUrl.startsWith("r2dbc:postgresql://"))
+        assertTrue(database.r2dbcUrl.endsWith("/shared_postgres_test"))
+    }
+
+    @Test
+    @Order(5)
+    fun `a repeated database call is a no-op with the same coordinates`() {
+        assertEquals(
+            SharedPostgres.database("shared_postgres_repeat"),
+            SharedPostgres.database("shared_postgres_repeat"),
+        )
+    }
+
     private fun query(
         sql: String,
         check: (ResultSet) -> Unit,

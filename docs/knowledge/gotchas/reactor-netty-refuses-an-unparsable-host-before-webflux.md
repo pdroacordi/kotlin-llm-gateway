@@ -7,10 +7,7 @@ tags: [reactor-netty, webflux, testing, security, http]
 related: [bugs/loopback-host-filter-passes-malformed-host-values, gotchas/reactor-netty-rejects-control-chars-in-header-values-before-webflux, systems/provider-adapters]
 created: 2026-11-04
 updated: 2026-11-04
-source_files:
-  - gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/security/LoopbackHostWebFilter.kt
-  - gateway-app/src/test/kotlin/io/github/pdroacordi/llmgateway/gateway/app/security/LoopbackHostWebFilterTest.kt
-  - gateway-app/src/test/kotlin/io/github/pdroacordi/llmgateway/gateway/app/security/LoopbackHostSocketTest.kt
+source_files: []
 ---
 
 ## Summary
@@ -36,3 +33,7 @@ Raw socket against `gateway-app`, one `POST /v1/chat/completions` per value, 202
 - A test of what a client receives for a header value goes through a socket; a mock exchange proves the filter, not the response.
 - None of the last row is exploitable: every value is refused, by one layer or the other.
 - Anything counting responses by `x-request-id` will miss these 400s, as it misses the control-character ones ([gotcha](reactor-netty-rejects-control-chars-in-header-values-before-webflux.md)).
+
+## Revision (2026-11-04)
+
+GW-04 deleted `LoopbackHostWebFilter` and its tests (ADR-GW-04-018), so the "filter" rows of the table describe a check that no longer exists: those values now reach the chain, and a team key is the control. The last row is unchanged, because it is Reactor Netty's own behaviour.

@@ -2,11 +2,13 @@ package io.github.pdroacordi.llmgateway.gateway.core.chat
 
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
+import io.github.pdroacordi.llmgateway.gateway.core.team.TeamId
 import kotlinx.coroutines.flow.Flow
 
-/** One provider call. Grows by field (team in GW-04), so the port signature does not change. */
+/** One provider call. Grows by field, so the port signature does not change. Adapters ignore [team]. */
 data class ChatCall(
     val requestId: RequestId,
+    val team: TeamId,
     val deployment: Deployment,
     val request: ChatRequest,
 )

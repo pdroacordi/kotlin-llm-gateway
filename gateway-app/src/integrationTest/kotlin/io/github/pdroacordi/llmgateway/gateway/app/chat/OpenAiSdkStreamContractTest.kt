@@ -10,6 +10,7 @@ import com.openai.models.chat.completions.ChatCompletionChunk
 import com.openai.models.chat.completions.ChatCompletionCreateParams
 import com.openai.models.chat.completions.ChatCompletionStreamOptions
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ChatExtensions
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -24,7 +25,7 @@ class OpenAiSdkStreamContractTest : MockBackedTest() {
         OpenAIOkHttpClient
             .builder()
             .baseUrl("http://127.0.0.1:$port/v1")
-            .apiKey("client-key")
+            .apiKey(TestKeys.TEAM_KEY)
             .maxRetries(0)
             .responseValidation(true)
             .timeout(Duration.ofSeconds(30))

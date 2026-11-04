@@ -12,6 +12,7 @@ import io.github.pdroacordi.llmgateway.gateway.core.chat.ProviderStreamEvent
 import io.github.pdroacordi.llmgateway.gateway.core.chat.Role
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import io.github.pdroacordi.llmgateway.gateway.providers.ApiKey
 import io.github.pdroacordi.llmgateway.gateway.providers.upstream.PoolConfig
 import io.github.pdroacordi.llmgateway.gateway.providers.upstream.StreamConfig
@@ -532,6 +533,7 @@ class RawProviderStreamIntegrationTest {
         private val CALL =
             ChatCall(
                 RequestId(Uuid.parse("01890a5d-ac96-774b-bcce-b302099a8057")),
+                TestKeys.TEAM_ID,
                 Deployment(DeploymentId("openai"), ProviderId("openai"), ModelName("m")),
                 ChatRequest(ModelName("m"), listOf(ChatMessage(Role("user"), MessageContent.Text("Hi")))),
             )

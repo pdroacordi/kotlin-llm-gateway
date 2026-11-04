@@ -13,6 +13,7 @@ import io.github.pdroacordi.llmgateway.gateway.core.chat.Role
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
 import io.github.pdroacordi.llmgateway.gateway.core.json.JsonValue
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import io.github.pdroacordi.llmgateway.gateway.providers.ApiKey
 import io.github.pdroacordi.llmgateway.gateway.providers.upstream.PoolConfig
 import io.github.pdroacordi.llmgateway.gateway.providers.upstream.StreamConfig
@@ -284,6 +285,7 @@ class OpenAiChatAdapterIntegrationTest {
     private fun call(extras: JsonValue.Object = JsonValue.Object.EMPTY): ChatCall =
         ChatCall(
             REQUEST_ID,
+            TestKeys.TEAM_ID,
             Deployment(DeploymentId("openai"), ProviderId("openai"), ModelName(MODEL)),
             ChatRequest(ModelName(MODEL), listOf(ChatMessage(Role("user"), MessageContent.Text("Hi"))), extras),
         )

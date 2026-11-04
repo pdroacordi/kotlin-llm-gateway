@@ -12,6 +12,8 @@ dependencies {
     api(libs.testcontainers.core)
     api(libs.testcontainers.postgresql)
     api(libs.testcontainers.redpanda)
+    // Loaded by BlockHound where a suite has it; a suite without it never touches this class.
+    compileOnly(libs.blockhound)
     // PostgreSQLContainer checks readiness over JDBC.
     runtimeOnly(libs.postgresql)
     testImplementation(libs.snakeyaml)

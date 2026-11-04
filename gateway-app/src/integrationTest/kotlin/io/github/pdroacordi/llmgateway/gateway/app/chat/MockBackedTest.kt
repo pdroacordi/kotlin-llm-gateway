@@ -1,10 +1,12 @@
 package io.github.pdroacordi.llmgateway.gateway.app.chat
 
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import io.github.pdroacordi.llmgateway.testsupport.SharedMockProvider
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.BeforeEach
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
+import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -30,7 +32,13 @@ open class MockBackedTest {
     /** [mapper], for helpers outside a subclass. */
     val json: JsonMapper get() = mapper
 
-    protected val gateway: WebTestClient by lazy { client("http://127.0.0.1:$port") }
+    /** Sends the seeded team key, unless a test sets its own `Authorization`. */
+    protected val gateway: WebTestClient by lazy {
+        client("http://127.0.0.1:$port")
+            .mutate()
+            .defaultHeader(HttpHeaders.AUTHORIZATION, TestKeys.BEARER)
+            .build()
+    }
 
     private val mock: WebTestClient by lazy { client(SharedMockProvider.baseUrl) }
 
@@ -96,7 +104,8 @@ open class MockBackedTest {
         body: String = STREAM,
         headers: String = "",
     ): String =
-        "POST $ROUTE HTTP/1.1\r\nHost: 127.0.0.1:$port\r\nContent-Type: application/json\r\n$headers" +
+        "POST $ROUTE HTTP/1.1\r\nHost: 127.0.0.1:$port\r\nContent-Type: application/json\r\n" +
+            "Authorization: ${TestKeys.BEARER}\r\n$headers" +
             "Content-Length: ${body.encodeToByteArray().size}\r\n\r\n$body"
 
     protected fun fingerprint(key: String): String =

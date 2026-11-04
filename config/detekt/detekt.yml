@@ -10,7 +10,7 @@ style:
     ignoreUsageInGenerics: true
   MagicNumber:
     # Defaults plus the integrationTest source set (see the note at the end of this file).
-    excludes: ['**/test/**', '**/integrationTest/**', '**/*.kts']
+    excludes: ['**/test/**', '**/integrationTest/**', '**/testFixtures/**', '**/*.kts']
 
 # CLAUDE.md: no GlobalScope, never swallow CancellationException. Listed explicitly so an alpha
 # that changes a default cannot switch them off.
@@ -30,25 +30,26 @@ coroutines:
     active: true
 
 # The default excludes of these rules (and MagicNumber's, above) list `**/test/**` but no `**/integrationTest/**`,
-# so backtick test names and literals in the integrationTest source set (ADR-016) would be findings.
+# so backtick test names and literals in the integrationTest source set (ADR-016) would be findings; the same goes
+# for the contract test in gateway-core's testFixtures (ADR-GW-04-010).
 complexity:
   TooManyFunctions:
-    excludes: ['**/test/**', '**/integrationTest/**']
+    excludes: ['**/test/**', '**/integrationTest/**', '**/testFixtures/**']
 exceptions:
   InstanceOfCheckForException:
-    excludes: ['**/test/**', '**/integrationTest/**']
+    excludes: ['**/test/**', '**/integrationTest/**', '**/testFixtures/**']
   ThrowingExceptionsWithoutMessageOrCause:
-    excludes: ['**/test/**', '**/integrationTest/**']
+    excludes: ['**/test/**', '**/integrationTest/**', '**/testFixtures/**']
   TooGenericExceptionCaught:
-    excludes: ['**/test/**', '**/integrationTest/**']
+    excludes: ['**/test/**', '**/integrationTest/**', '**/testFixtures/**']
 naming:
   FunctionNaming:
-    excludes: ['**/test/**', '**/integrationTest/**']
+    excludes: ['**/test/**', '**/integrationTest/**', '**/testFixtures/**']
 performance:
   ForEachOnRange:
-    excludes: ['**/test/**', '**/integrationTest/**']
+    excludes: ['**/test/**', '**/integrationTest/**', '**/testFixtures/**']
   SpreadOperator:
-    excludes: ['**/test/**', '**/integrationTest/**']
+    excludes: ['**/test/**', '**/integrationTest/**', '**/testFixtures/**']
 potential-bugs:
   UnsafeCallOnNullableType:
-    excludes: ['**/test/**', '**/integrationTest/**']
+    excludes: ['**/test/**', '**/integrationTest/**', '**/testFixtures/**']

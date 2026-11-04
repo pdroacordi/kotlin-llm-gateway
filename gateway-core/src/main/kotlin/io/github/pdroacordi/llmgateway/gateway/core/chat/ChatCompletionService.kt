@@ -2,6 +2,7 @@ package io.github.pdroacordi.llmgateway.gateway.core.chat
 
 import io.github.pdroacordi.llmgateway.gateway.core.error.GatewayError
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
+import io.github.pdroacordi.llmgateway.gateway.core.team.TeamId
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -27,10 +28,11 @@ class ChatCompletionService(
 ) {
     suspend fun complete(
         requestId: RequestId,
+        team: TeamId,
         request: ChatRequest,
     ): ChatOutcome {
         val deployment = resolver.resolve(request.model)
-        return when (val result = port.complete(ChatCall(requestId, deployment, request))) {
+        return when (val result = port.complete(ChatCall(requestId, team, deployment, request))) {
             is ProviderResult.Completed -> {
                 val usage = result.usage ?: estimator.estimate(request, result.completion)
                 ChatOutcome.Answered(deployment, result.completion, usage)
@@ -45,6 +47,7 @@ class ChatCompletionService(
     /** Cold. [onEnd] must not suspend: it can run in a cancelled coroutine. */
     fun stream(
         requestId: RequestId,
+        team: TeamId,
         request: ChatRequest,
         onEnd: (StreamSummary) -> Unit = {},
     ): Flow<ChatStreamEvent> =
@@ -52,7 +55,7 @@ class ChatCompletionService(
             val deployment = resolver.resolve(request.model)
             val tally = StreamTally(request, deployment, estimator)
             try {
-                port.stream(ChatCall(requestId, deployment, request)).collect { event ->
+                port.stream(ChatCall(requestId, team, deployment, request)).collect { event ->
                     tally.on(event).forEach { emit(it) }
                 }
                 // Otherwise the response would be an empty 200: no event ever reaches the frames.

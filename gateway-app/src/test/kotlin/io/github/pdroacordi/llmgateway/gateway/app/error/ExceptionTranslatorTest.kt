@@ -24,11 +24,8 @@ class ExceptionTranslatorTest {
     }
 
     @Test
-    fun `a 404 gives UnknownRoute with the method and path`() {
-        assertEquals(
-            GatewayError.UnknownRoute("GET", "/v1/x"),
-            ResponseStatusException(HttpStatus.NOT_FOUND).translate(),
-        )
+    fun `a 404 gives UnknownRoute`() {
+        assertEquals(GatewayError.UnknownRoute, ResponseStatusException(HttpStatus.NOT_FOUND).translate())
     }
 
     @Test
@@ -125,5 +122,5 @@ class ExceptionTranslatorTest {
         assertEquals(GatewayError.Internal, first.translate())
     }
 
-    private fun Throwable.translate(): GatewayError = toGatewayError("GET", "/v1/x")
+    private fun Throwable.translate(): GatewayError = toGatewayError("GET")
 }

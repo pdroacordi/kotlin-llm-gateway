@@ -2,6 +2,7 @@ package io.github.pdroacordi.llmgateway.gateway.app.error
 
 import io.github.pdroacordi.llmgateway.gateway.app.ProbeController
 import io.github.pdroacordi.llmgateway.gateway.app.chat.FakeChatModelPort
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -26,9 +27,11 @@ import java.time.Duration
 @Import(ProbeController::class, FakeChatModelPort.Wiring::class)
 @ExtendWith(OutputCaptureExtension::class)
 class ContentTooLargeIntegrationTest(
-    @Autowired private val client: WebTestClient,
+    @Autowired unauthenticated: WebTestClient,
     @Autowired private val provider: FakeChatModelPort,
 ) {
+    private val client = unauthenticated.mutate().defaultHeader("Authorization", TestKeys.BEARER).build()
+
     @Test
     fun `a body over the codec limit gives 413 request_too_large`() {
         client

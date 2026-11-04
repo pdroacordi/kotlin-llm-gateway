@@ -105,6 +105,7 @@ Read the entry before touching the system. The rule beside each is the one a cha
 ./gradlew build                               # everything, integrationTest included: needs Docker running
 docker compose -f deploy/compose.yaml up -d --wait   # local stack; overrides in deploy/.env
 bash tools/smoke/stack-check.sh   # stack health, OTLP to Jaeger and Prometheus, Grafana datasources
+bash tools/smoke/live-openai.sh   # paid, real OpenAI API, key in .env (.env.example); only with the user's go-ahead
 ```
 
 Gradle runs on JDK 21+ and provisions the JDK 25 toolchain itself.
@@ -113,7 +114,7 @@ Gradle runs on JDK 21+ and provisions the JDK 25 toolchain itself.
 
 - TDD for core: a failing test first, the minimal code to pass, then refactor. Core tests are plain JUnit 5 + MockK + `kotlinx-coroutines-test`, no Spring context.
 - Integration tests use Testcontainers (Postgres, Redis, Kafka-compatible broker) and WireMock or `mock-provider`. Tests that need Docker live in `src/integrationTest` and run in the `integrationTest` suite (convention `llmgw.integration-test`, wired into `check`); without a daemon they fail, never skip (ADR-016). Shared, lazily started containers come from `test-support` (`SharedPostgres`, `SharedRedis`, `SharedRedpanda`, `SharedMockProvider`; images in `StackImages`, kept equal to `deploy/compose.yaml` by `StackContractTest`). A module adds `integrationTestImplementation(project(":test-support"))`, and `mockProvider(project(":mock-provider"))` for the mock image. `mock-provider` runs as a container built from its boot jar and `mock-provider/Dockerfile` (consume the `mockProviderBootJar` configuration).
-- **Tests never call a real provider.** Live tests are tagged `live`, read keys from the environment, never run in CI, and need the user's go-ahead (they cost money).
+- **Tests never call a real provider.** Live checks read keys from the environment or `.env`, never run in CI, and need the user's go-ahead (they cost money): JUnit ones are tagged `live`, and `tools/smoke/live-openai.sh` checks the OpenAI adapter.
 - Coverage: at least 80% of lines in `*-core`, 70% overall (Kover).
 
 ## Local ports

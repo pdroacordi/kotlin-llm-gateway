@@ -980,3 +980,9 @@ Append-only, newest at the bottom. Every session on this item ends with an entry
 - **Open for the user:** a `live` call to api.openai.com (paid) to prove real TLS and error bodies. Not done; no key used.
 - **Handed on (not GW-01 criteria):** GW-02 must not write chunks through a Jackson encoder. GW-06 owns assistant turns with `tool_calls` and no `content`, which go up with `"content":null`. OBS-03 and COST-02: a client disconnect leaves no log line with the request ID (smoke finding 4). OPS-01: a 10 MB body of numbers cost 1215 ms on an event loop (smoke finding 7).
 - **Next:** commit (`Roadmap: GW-01`), with `git update-index --chmod=+x tools/smoke/chat-completions.sh`.
+
+### 2026-11-04: live run
+- **Who:** orchestrator.
+- **Done:** `tools/smoke/live-openai.sh` passed against api.openai.com ([run](../knowledge/runs/2026-11-04-live-openai.md)): TLS, completion, real 400, 401 and 404 bodies.
+- **Decisions:** user, 2026-11-04: "Eu autorizo a chamada live paga a openAi".
+- **Next:** none.

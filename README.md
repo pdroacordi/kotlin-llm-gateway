@@ -2,7 +2,7 @@
 
 An open-source, self-hostable **LLM gateway** and **agent runtime**, in Kotlin and Spring Boot.
 
-> **Status: foundations done.** `FND-01` to `FND-04` are finished: the build and its quality gates, the mock provider, the local stack, and request IDs with the OpenAI error envelope. The gateway endpoints start with `GW-01`. See the [roadmap](docs/roadmap.md).
+> **Status: first gateway slice working.** `FND-01` to `FND-04`, `GW-01` and `GW-02` are finished: `POST /v1/chat/completions`, with and without streaming, through the OpenAI adapter, with request IDs and the OpenAI error envelope. Authentication arrives with `GW-04`; until then the gateway binds loopback only. See the [roadmap](docs/roadmap.md).
 
 ## What it does (v1 target)
 
@@ -36,6 +36,7 @@ No provider account is needed: tests and local runs use `mock-provider`. Gradle 
 docker compose -f deploy/compose.yaml up -d --wait   # local stack
 bash tools/smoke/stack-check.sh                      # checks the stack
 ./gradlew :mock-provider:bootRun                     # mock provider on port 8090
+./gradlew :gateway-app:bootRun --args="--spring.profiles.active=local"   # gateway on port 8080, against the mock
 ```
 
 ## How this repository is built

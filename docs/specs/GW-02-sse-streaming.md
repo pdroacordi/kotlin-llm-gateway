@@ -1119,3 +1119,8 @@ Append-only, newest at the bottom. Every session on this item ends with an entry
 - **Done:** `x_gateway` became `llmgw` (`ChatChunkWriter.EXTENSION_MEMBER`, `EXTENSION` in `streaming.sh`, the contract sections, roadmap, systems entry, ADR-019).
 - **Decisions:** user, 2026-11-04: "llmgw (Recommended)". Earlier mentions in the ADR options and in this Log keep the old name as history.
 - **Next:** none.
+
+### 2026-11-04: live run
+- **Who:** orchestrator.
+- **Done:** real streams passed through the parser with and without `include_usage` ([run](../knowledge/runs/2026-11-04-live-openai.md)). Still unproven: real in-band errors and how promptly OpenAI closes after `[DONE]`.
+- **Next:** none.

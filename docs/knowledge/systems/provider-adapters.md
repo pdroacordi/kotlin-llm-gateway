@@ -169,4 +169,4 @@ The `local` profile (`application-local.yaml`) points at `http://127.0.0.1:8090/
 - `Flux.timeout(Publisher, Function)` has no `Duration` form with a factory: both arguments are publishers, so each item schedules a `Mono.delay` on `parallel`.
 - Inside `Socket().apply { }`, `port` is the socket's own, 0: an integration test hits `BindException`.
 - `Host: [::1` is refused by Reactor Netty with an empty 400 before the filter runs: no envelope and no `x-request-id`.
-- TLS and OpenAI's real error bodies are unproven: the mock is plain HTTP and imitates them; a live call needs the user's go-ahead.
+- A good TLS handshake, real completions, streams and real 400, 401 and 404 bodies are proven live ([run](../runs/2026-11-04-live-openai.md)). Real in-band stream errors, 429 and 5xx bodies are not: they cannot be provoked on demand.

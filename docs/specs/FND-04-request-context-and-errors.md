@@ -169,6 +169,7 @@ Each item adds its variant to `GatewayError` and its row to `toReply`, and may r
 | GRD-01 | `GuardrailBlocked` | 400 | `invalid_request_error` | `guardrail_blocked` | Gateway code. Precedent: Azure OpenAI answers a filtered prompt with 400 `content_filter`. The message never echoes the blocked content. |
 | GW-01 | `UpstreamError` | 502 | `server_error` | `upstream_error` | Provider returned a 5xx or an unreadable response. GW-01 decides whether a provider 4xx is relayed as-is (the client's fault). |
 | RTE-02 | `ProviderUnavailable` | 503 | `server_error` | `provider_unavailable` | Fallback chain exhausted or all breakers open; optional `retry-after`. |
+| GW-05 | `Overloaded` | 503 | `server_error` | `gateway_overloaded` | The gateway refused embedding work it could not take: budget full, lane full at the parse or closed, the pool's pending queue full; `retry-after` and `retry-after-ms`, no `x-should-retry` (GW-05 section 4). |
 | GW-01 | `UpstreamTimeout` | 504 | `server_error` | `upstream_timeout` | Provider exceeded its timeout before the first byte. |
 
 ### What stays OpenAI-compatible, what is an extension

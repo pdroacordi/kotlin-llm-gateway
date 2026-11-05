@@ -14,7 +14,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
-// One case per row of FND-04 section 4, "Implemented by FND-04", of GW-01 section 4 and of GW-04 section 4.
+// One case per row of FND-04 section 4, "Implemented by FND-04", of GW-01, GW-04 and GW-05 section 4.
 class ErrorReplyTest {
     @ParameterizedTest(name = "{0}")
     @MethodSource("rows")
@@ -265,6 +265,17 @@ class ErrorReplyTest {
                         null,
                         "upstream_auth_failed",
                         mapOf("x-should-retry" to "false"),
+                    ),
+                ),
+                Arguments.of(
+                    named("gateway overloaded", GatewayError.Overloaded(7.seconds)),
+                    ErrorReply(
+                        503,
+                        "The gateway is at its limit for work in flight; retry later. $REPORT",
+                        SERVER,
+                        null,
+                        "gateway_overloaded",
+                        mapOf("retry-after" to "7", "retry-after-ms" to "7000"),
                     ),
                 ),
                 Arguments.of(

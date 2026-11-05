@@ -1,6 +1,7 @@
 package io.github.pdroacordi.llmgateway.gateway.app
 
 import io.github.pdroacordi.llmgateway.gateway.app.chat.FakeChatModelPort
+import io.github.pdroacordi.llmgateway.gateway.app.embedding.FakeEmbeddingModelPort
 import io.github.pdroacordi.llmgateway.gateway.app.request.GatewayHeaders
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ProviderStreamEvent
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestIdGenerator
@@ -44,7 +45,12 @@ import kotlin.uuid.Uuid
  * (ADR-FND-04-002).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Import(ProbeController::class, BlockHoundIntegrationTest.ThreadRecording::class, FakeChatModelPort.Wiring::class)
+@Import(
+    ProbeController::class,
+    BlockHoundIntegrationTest.ThreadRecording::class,
+    FakeChatModelPort.Wiring::class,
+    FakeEmbeddingModelPort.Wiring::class,
+)
 @ExtendWith(OutputCaptureExtension::class)
 class BlockHoundIntegrationTest(
     @LocalServerPort port: Int,
@@ -159,6 +165,21 @@ class BlockHoundIntegrationTest(
     }
 
     @Test
+    fun `2000 embedding calls over real sockets at concurrency 32 pass BlockHound, from the first request on`() {
+        val statuses =
+            Flux
+                .range(0, REQUESTS)
+                .flatMap({ embed() }, CONCURRENCY)
+                .map { it.statusCode.value() }
+                .collectList()
+                .block(BLOCK_LIMIT)
+                .orEmpty()
+
+        assertEquals(REQUESTS, statuses.size)
+        assertEquals(setOf(200), statuses.toSet())
+    }
+
+    @Test
     fun `2000 streams over real sockets at concurrency 32 pass BlockHound, from the first request on`() {
         provider.reset()
 
@@ -242,6 +263,14 @@ class BlockHoundIntegrationTest(
             .uri("/v1/chat/completions")
             .contentType(MediaType.APPLICATION_JSON)
             .bodyValue("""{"model":"mock-chat","messages":[{"role":"user","content":"Hi"}],"temperature":0.7}""")
+            .exchangeToMono { it.toBodilessEntity() }
+
+    private fun embed(): Mono<ResponseEntity<Void>> =
+        client
+            .post()
+            .uri("/v1/embeddings")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""{"model":"mock-embedding","input":["Hi",""],"dimensions":3}""")
             .exchangeToMono { it.toBodilessEntity() }
 
     private fun get(path: String): Mono<ResponseEntity<Void>> =

@@ -22,7 +22,7 @@ internal object OpenAiUsageReader {
             else -> Usage(input, output, cached, extras = node.extrasExcept(USAGE_MEMBERS))
         }
     }
-
-    private fun JsonNode.toTokenCount(): TokenCount? =
-        if (isIntegralNumber && canConvertToLong() && longValue() >= 0) TokenCount(longValue()) else null
 }
+
+internal fun JsonNode.toTokenCount(): TokenCount? =
+    if (isIntegralNumber && canConvertToLong() && longValue() >= 0) TokenCount(longValue()) else null

@@ -1,5 +1,6 @@
 package io.github.pdroacordi.llmgateway.gateway.core.chat
 
+import io.github.pdroacordi.llmgateway.gateway.core.embedding.EmbeddingInput
 import io.github.pdroacordi.llmgateway.gateway.core.json.JsonValue
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
@@ -8,6 +9,37 @@ import org.junit.jupiter.api.Test
 
 class UsageEstimatorTest {
     private val estimator = UsageEstimator()
+
+    @Test
+    fun `a text input counts its length over 4, rounded up, with no message overhead`() {
+        assertEquals(TokenCount(2), estimator.estimate(EmbeddingInput.Text("12345")).inputTokens)
+    }
+
+    @Test
+    fun `each text of a list rounds up on its own`() {
+        assertEquals(TokenCount(4), estimator.estimate(EmbeddingInput.Texts(listOf("1", "2", "12345"))).inputTokens)
+    }
+
+    @Test
+    fun `a token array counts its ids`() {
+        assertEquals(TokenCount(3), estimator.estimate(EmbeddingInput.TokenIds(longArrayOf(7, 8, 9))).inputTokens)
+    }
+
+    @Test
+    fun `token arrays sum their ids`() {
+        val input = EmbeddingInput.TokenIdLists(listOf(longArrayOf(7), longArrayOf(8, 9)))
+
+        assertEquals(TokenCount(3), estimator.estimate(input).inputTokens)
+    }
+
+    @Test
+    fun `an embedding estimate has no output and is flagged`() {
+        val usage = estimator.estimate(EmbeddingInput.Texts(emptyList()))
+
+        assertEquals(TokenCount(0), usage.inputTokens)
+        assertEquals(TokenCount(0), usage.outputTokens)
+        assertTrue(usage.estimated)
+    }
 
     @Test
     fun `a text counts its length over 4, rounded up, plus 3 per message and 3 for the reply`() {

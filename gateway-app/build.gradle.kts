@@ -33,6 +33,12 @@ kover {
     }
 }
 
+// The embedding budget is a quarter of the heap (ADR-GW-05-011): at Gradle's 512 MiB default a call priced at the
+// default max-response-size would be refused, and these suites prove the route at its defaults.
+tasks.named<Test>("integrationTest") {
+    maxHeapSize = "1g"
+}
+
 tasks.named("check") {
     dependsOn("detektTestFixtures")
 }

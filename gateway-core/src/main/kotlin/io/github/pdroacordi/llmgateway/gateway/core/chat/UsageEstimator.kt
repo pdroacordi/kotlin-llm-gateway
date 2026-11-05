@@ -1,5 +1,7 @@
 package io.github.pdroacordi.llmgateway.gateway.core.chat
 
+import io.github.pdroacordi.llmgateway.gateway.core.embedding.EmbeddingInput
+
 // OpenAI's rule of thumb and token-counting cookbook, as in FND-03 (ADR-GW-01-011).
 private const val CHARACTERS_PER_TOKEN = 4
 private const val TOKENS_PER_MESSAGE = 3L
@@ -7,6 +9,18 @@ private const val TOKENS_PER_REPLY = 3L
 
 /** The count used when a provider omits usage; a lower bound when opaque parts such as images are present. */
 class UsageEstimator {
+    /** No per-message overhead: an embedding call has no messages, and its reply has no tokens (ADR-GW-05-007). */
+    fun estimate(input: EmbeddingInput): Usage {
+        val tokens =
+            when (input) {
+                is EmbeddingInput.Text -> tokensIn(input.text)
+                is EmbeddingInput.Texts -> input.texts.sumOf(::tokensIn)
+                is EmbeddingInput.TokenIds -> input.ids.size.toLong()
+                is EmbeddingInput.TokenIdLists -> input.lists.sumOf { it.size.toLong() }
+            }
+        return Usage(TokenCount(tokens), TokenCount(0), estimated = true)
+    }
+
     fun estimate(
         request: ChatRequest,
         completion: ChatCompletion,

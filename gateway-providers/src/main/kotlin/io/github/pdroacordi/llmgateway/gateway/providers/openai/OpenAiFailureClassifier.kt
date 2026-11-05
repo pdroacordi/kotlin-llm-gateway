@@ -21,9 +21,16 @@ internal class OpenAiFailureClassifier(
         headers: HttpHeaders,
         body: ByteArray,
         now: Instant,
-    ): ProviderFailure {
-        val fields = errorFields(body)
-        return when (status) {
+    ): ProviderFailure = classify(status, headers, errorFields(body), now)
+
+    /** For a caller that has read [fields] already, or chose not to read the body. */
+    fun classify(
+        status: Int,
+        headers: HttpHeaders,
+        fields: ProviderErrorFields,
+        now: Instant,
+    ): ProviderFailure =
+        when (status) {
             NOT_FOUND -> {
                 if (fields.code == MODEL_NOT_FOUND) ProviderFailure.ModelNotFound else ProviderFailure.UpstreamError
             }
@@ -56,7 +63,6 @@ internal class OpenAiFailureClassifier(
                 ProviderFailure.UpstreamError
             }
         }
-    }
 
     /** Tolerates a non-JSON body, such as a proxy's HTML 502. */
     override fun errorFields(body: ByteArray): ProviderErrorFields =

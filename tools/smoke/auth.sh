@@ -43,6 +43,11 @@ check() {
     local name=$1 actual=$2 expected=$3
     if [ "$actual" = "$expected" ]; then pass "$name"; else fail "$name" "expected '$expected', got '$actual'"; fi
 }
+# Two computed values: both empty proves nothing, as when the mock stopped answering.
+check_same() {
+    local name=$1 actual=$2 expected=$3
+    if [ -z "$actual" ]; then fail "$name" "nothing to compare"; else check "$name" "$actual" "$expected"; fi
+}
 check_has() {
     local name=$1 file=$2 needle=$3
     if grep -qF -- "$needle" "$file"; then pass "$name"; else fail "$name" "no '$needle' in: $(cut -c1-300 "$file")"; fi
@@ -89,7 +94,7 @@ check "1 no key status" "$STATUS" 401
 check "1 no key code" "$(code)" missing_api_key
 check "1 WWW-Authenticate" "$(header www-authenticate)" Bearer
 [ -n "$(header x-request-id)" ] && pass "1 x-request-id" || fail "1 x-request-id" "absent"
-check "1 no upstream call" "$(last_seq)" "$before"
+check_same "1 no upstream call" "$(last_seq)" "$before"
 
 # 2. Wrong, malformed and Basic credentials; a percent-encoded path.
 post -H "Authorization: Bearer $UNKNOWN_KEY"

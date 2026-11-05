@@ -124,6 +124,7 @@ class AuthScopeTest(
         val routes = functionalRoutes()
 
         assertTrue("/v1/chat/completions" in routes) { routes.toString() }
+        assertTrue("/v1/embeddings" in routes) { routes.toString() }
         assertEquals(emptyList<String>(), routes.filterNot { inScope(it) })
     }
 

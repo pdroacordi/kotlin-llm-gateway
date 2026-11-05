@@ -25,6 +25,7 @@ import org.springframework.web.server.ServerWebExchange
 import org.springframework.web.util.DisconnectedClientHelper
 import reactor.core.publisher.Mono
 import java.util.Optional
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * The only exception mapper: everything that escapes a filter or handler before the response is committed becomes
@@ -36,6 +37,8 @@ class GatewayErrorWebExceptionHandler(
     private val ids: RequestIdGenerator,
 ) : ErrorWebExceptionHandler,
     Ordered {
+    private val refusals = AtomicLong()
+
     override fun getOrder(): Int = ORDER
 
     override fun handle(
@@ -110,10 +113,28 @@ class GatewayErrorWebExceptionHandler(
         requestId: RequestId,
         ex: Throwable,
     ) = withMdc(requestId) {
-        if (reply.status < SERVER_ERROR) {
-            log.debug("Request rejected with status {} ({})", reply.status, reply.code)
+        when {
+            reply.status < SERVER_ERROR -> {
+                log.debug("Request rejected with status {} ({})", reply.status, reply.code)
+            }
+
+            reply.code == ErrorCodes.GATEWAY_OVERLOADED -> {
+                logRefusal(reply)
+            }
+
+            else -> {
+                log.error("Request failed with status {} ({})", reply.status, reply.code, LoggableFailure.of(ex))
+            }
+        }
+    }
+
+    // Back-pressure, not a failure: one line, and only one in a thousand above DEBUG (ADR-GW-05-011).
+    private fun logRefusal(reply: ErrorReply) {
+        val total = refusals.incrementAndGet()
+        if (total % REFUSALS_PER_WARNING == 1L) {
+            log.warn("Request refused with status {} ({}), {} since start", reply.status, reply.code, total)
         } else {
-            log.error("Request failed with status {} ({})", reply.status, reply.code, LoggableFailure.of(ex))
+            log.debug("Request refused with status {} ({})", reply.status, reply.code)
         }
     }
 
@@ -137,6 +158,7 @@ class GatewayErrorWebExceptionHandler(
         // Before Boot's default handler (-1) and WebFlux's status handler (0), should either still be registered.
         const val ORDER = -2
         const val SERVER_ERROR = 500
+        const val REFUSALS_PER_WARNING = 1000L
         private val log = LoggerFactory.getLogger(GatewayErrorWebExceptionHandler::class.java)
 
         // The message holds only fixed text and the request ID's hex and dashes, so it needs no JSON escaping.

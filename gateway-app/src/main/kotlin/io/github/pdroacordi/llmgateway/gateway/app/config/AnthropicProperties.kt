@@ -38,7 +38,7 @@ data class AnthropicProperties(
             defaultMaxTokens = defaultMaxTokens,
             connectTimeout = connectTimeout,
             requestTimeout = requestTimeout,
-            maxResponseBytes = checks.maxResponseSize(maxResponseSize),
+            maxResponseBytes = checks.maxResponseSize("max-response-size", maxResponseSize),
             pool = checks.pool(pool),
             stream = checks.stream(stream),
         )

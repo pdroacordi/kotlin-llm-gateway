@@ -16,14 +16,22 @@ import kotlin.jvm.optionals.getOrNull
  * The only body read of a functional route. Spring translates the body limit for annotated controllers only, so it is
  * translated here, where the limit can only be the request's (ADR-GW-01-003).
  */
-suspend fun ServerRequest.readJsonObject(trees: ObjectReader): ObjectNode {
+suspend fun ServerRequest.readJsonObject(trees: ObjectReader): ObjectNode = parseJsonObject(trees, readJsonBody())
+
+/** The checked bytes of a JSON body, for a route that parses them elsewhere; null when there is no body. */
+suspend fun ServerRequest.readJsonBody(): ByteArray? {
     requireJsonContentType()
-    val bytes =
-        try {
-            awaitBodyOrNull<ByteArray>()
-        } catch (_: DataBufferLimitException) {
-            throw GatewayErrorException(GatewayError.ContentTooLarge)
-        }
+    return try {
+        awaitBodyOrNull<ByteArray>()
+    } catch (_: DataBufferLimitException) {
+        throw GatewayErrorException(GatewayError.ContentTooLarge)
+    }
+}
+
+fun parseJsonObject(
+    trees: ObjectReader,
+    bytes: ByteArray?,
+): ObjectNode {
     val tree = bytes?.let { trees.readTreeOrNull(it) }
     return tree as? ObjectNode ?: throw GatewayErrorException(GatewayError.InvalidRequest.unreadableBody)
 }

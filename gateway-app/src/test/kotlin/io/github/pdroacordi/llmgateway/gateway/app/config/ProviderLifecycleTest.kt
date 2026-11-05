@@ -31,5 +31,6 @@ class ProviderLifecycleTest {
                 .filter { "Provider pool closed" in it }
         assertEquals(1, lines.count { "name=openai" in it }) { lines.toString() }
         assertEquals(1, lines.count { "name=anthropic" in it }) { lines.toString() }
+        assertEquals(1, lines.count { "name=embeddings-openai" in it }) { lines.toString() }
     }
 }

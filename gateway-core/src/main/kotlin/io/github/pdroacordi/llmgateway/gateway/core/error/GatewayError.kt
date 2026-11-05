@@ -41,6 +41,13 @@ sealed interface GatewayError {
                     ErrorCodes.INVALID_REQUEST,
                     "messages",
                 )
+            val inputRequired =
+                InvalidRequest(
+                    "'input' is required and must be a string, an array of strings, an array of integers " +
+                        "or an array of integer arrays.",
+                    ErrorCodes.INVALID_REQUEST,
+                    "input",
+                )
             val streamMistyped = InvalidRequest("'stream' must be a boolean.", ErrorCodes.INVALID_REQUEST, "stream")
             val streamOptionsMistyped =
                 InvalidRequest("'stream_options' must be an object.", ErrorCodes.INVALID_REQUEST, "stream_options")
@@ -116,6 +123,11 @@ sealed interface GatewayError {
             require(status in HttpStatuses.CLIENT_ERRORS) { "RejectedRequest needs a 4xx status, got $status" }
         }
     }
+
+    /** The gateway refused work it has no room for; nothing reached a provider (ADR-GW-05-011). */
+    data class Overloaded(
+        val retryAfter: Duration,
+    ) : GatewayError
 
     /** Bugs, non-gateway 5xx and anything untranslated. */
     data object Internal : GatewayError

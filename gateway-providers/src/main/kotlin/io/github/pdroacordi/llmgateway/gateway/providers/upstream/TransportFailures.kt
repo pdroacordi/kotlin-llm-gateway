@@ -61,6 +61,10 @@ internal object TransportFailures {
             }
         }
 
+    /** The pool's own queue is full: the gateway's overload, and nothing was sent. Chat still classifies it. */
+    fun poolQueueFull(failure: Throwable): Boolean =
+        generateSequence(failure) { it.cause }.take(MAX_CAUSE_DEPTH).any { it is PoolAcquirePendingLimitException }
+
     // The provider cannot have seen the call, so RTE-02 may repeat it. Anything else may have reached it, and billed.
     private fun Throwable.nothingWasSent(): Boolean =
         generateSequence(this) { it.cause }.take(MAX_CAUSE_DEPTH).any { cause ->

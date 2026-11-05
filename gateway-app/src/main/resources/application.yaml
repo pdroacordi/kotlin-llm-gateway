@@ -102,6 +102,25 @@ llmgw:
         total-timeout: 30m
         # 1KB to 16MB, per event. A chunk is usually under 1 KB; streamed audio and logprobs are larger.
         max-event-size: 1MB
+      embeddings:
+        # The whole call. No public source: 198 MiB at 100 Mbit/s is 17 s, plus the provider's time on 300,000 tokens.
+        request-timeout: 120s
+        # 1KB to 256MB. The worst valid reply, 2048 x 3072 indented floats, is 198 MiB (ADR-GW-05-006).
+        max-response-size: 256MB
+        # The cap on concurrent upstream reads. It does not cap memory: a slot is free before the scan and the write.
+        max-connections: 64
+        # max-in-flight-bytes: request and reply bytes in flight in this process, past which a call gets 503 at once.
+        # Unset, a quarter of the heap. Set, at least max-response-size and at most half the heap: heap holds about
+        # 2 x this, so size it as (heap - everything else) / 2 (ADR-GW-05-011).
+        # What a request with no `dimensions` is priced at: the largest documented output.
+        default-dimensions: 3072
+        # The bounded scheduler for parsing, scanning and writing bodies, kept off the event loops (ADR-GW-05-012).
+        cpu-threads: 4
+        # Stages that may wait beyond cpu-threads before a new request's parse gets 503 at once. Later stages are never
+        # refused for it: the budget bounds them (ADR-GW-05-012). No public source.
+        cpu-queue-size: 256
+        # Retry-After on a call refused for the budget, the lane or the pool's queue. No public source.
+        busy-retry-after: 5s
     anthropic:
       # Off, so a start with no Anthropic key keeps working (ADR-GW-03-004).
       enabled: false

@@ -36,13 +36,24 @@ check() {
     local name=$1 actual=$2 expected=$3
     if [ "$actual" = "$expected" ]; then pass "$name"; else fail "$name" "expected '$expected', got '$actual'"; fi
 }
+# Two computed values: both empty proves nothing, as when the mock stopped answering.
+check_same() {
+    local name=$1 actual=$2 expected=$3
+    if [ -z "$actual" ]; then fail "$name" "nothing to compare"; else check "$name" "$actual" "$expected"; fi
+}
 check_has() {
     local name=$1 file=$2 needle=$3
     if grep -qF -- "$needle" "$file"; then pass "$name"; else fail "$name" "no '$needle' in: $(cut -c1-300 "$file")"; fi
 }
 check_lacks() {
     local name=$1 file=$2 needle=$3
-    if grep -qF -- "$needle" "$file"; then fail "$name" "'$needle' found"; else pass "$name"; fi
+    if [ ! -s "$file" ]; then
+        fail "$name" "nothing to read"
+    elif grep -qF -- "$needle" "$file"; then
+        fail "$name" "'$needle' found"
+    else
+        pass "$name"
+    fi
 }
 
 stream_body() {
@@ -216,7 +227,7 @@ check_has "11 include_usage param" "$BODY" '"param":"stream_options.include_usag
 post '{"model":"mock-chat","messages":[{"role":"user","content":"Hi"}],"stream_options":{}}'
 check "11 without stream" "$STATUS" 400
 check_has "11 without stream message" "$BODY" "only allowed when 'stream' is true"
-check "11 lastSeq unchanged" "$(last_seq)" "$before"
+check_same "11 lastSeq unchanged" "$(last_seq)" "$before"
 
 # 13. Time to first chunk, informational: no threshold.
 reset_mock

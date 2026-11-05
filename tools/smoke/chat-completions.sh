@@ -34,13 +34,24 @@ check() {
     local name=$1 actual=$2 expected=$3
     if [ "$actual" = "$expected" ]; then pass "$name"; else fail "$name" "expected '$expected', got '$actual'"; fi
 }
+# Two computed values: both empty proves nothing, as when the mock stopped answering.
+check_same() {
+    local name=$1 actual=$2 expected=$3
+    if [ -z "$actual" ]; then fail "$name" "nothing to compare"; else check "$name" "$actual" "$expected"; fi
+}
 check_has() {
     local name=$1 file=$2 needle=$3
     if grep -qF -- "$needle" "$file"; then pass "$name"; else fail "$name" "no '$needle' in: $(cut -c1-300 "$file")"; fi
 }
 check_lacks() {
     local name=$1 file=$2 needle=$3
-    if grep -qF -- "$needle" "$file"; then fail "$name" "'$needle' found"; else pass "$name"; fi
+    if [ ! -s "$file" ]; then
+        fail "$name" "nothing to read"
+    elif grep -qF -- "$needle" "$file"; then
+        fail "$name" "'$needle' found"
+    else
+        pass "$name"
+    fi
 }
 
 # Sets $STATUS and fills $HEADERS and $BODY. Extra curl arguments follow the body.
@@ -176,7 +187,7 @@ before=$(last_seq)
 STATUS=$(curl -sS --max-time 5 -o "$BODY" -w '%{http_code}' -H "@$TEAM_KEY_HEADER" -H 'Content-Type: text/plain' \
     --data 'Hi' "$GATEWAY$ROUTE")
 check "10 text/plain status" "$STATUS" 415
-check "10 no upstream call" "$(last_seq)" "$before"
+check_same "10 no upstream call" "$(last_seq)" "$before"
 
 # 11. Overhead, informational: the median of 100 calls through the gateway minus direct to the mock.
 direct=$(for _ in $(seq 100); do

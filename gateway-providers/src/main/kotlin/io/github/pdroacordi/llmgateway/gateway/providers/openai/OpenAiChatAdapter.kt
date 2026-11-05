@@ -10,8 +10,6 @@ import io.github.pdroacordi.llmgateway.gateway.providers.upstream.CLIENT_REQUEST
 import io.github.pdroacordi.llmgateway.gateway.providers.upstream.Exchange
 import io.github.pdroacordi.llmgateway.gateway.providers.upstream.TransportFailures
 import io.github.pdroacordi.llmgateway.gateway.providers.upstream.UpstreamClient
-import io.github.pdroacordi.llmgateway.gateway.providers.upstream.providerRequestId
-import io.github.pdroacordi.llmgateway.gateway.providers.upstream.sourceName
 import kotlinx.coroutines.flow.Flow
 import org.slf4j.LoggerFactory
 import org.springframework.http.ResponseEntity
@@ -35,6 +33,7 @@ class OpenAiChatAdapter(
     private val trees = mapper.exactTreeReader()
     private val reader = OpenAiResponseReader(trees)
     private val classifier = OpenAiFailureClassifier(trees)
+    private val calls = OpenAiCallLog(OpenAiChatAdapter::class.java, clock)
     private val endpoint = URI.create("${config.baseUrl.toString().trimEnd('/')}/chat/completions")
     private val upstream = UpstreamClient(POOL_NAME, config.connectTimeout, config.maxResponseBytes, config.pool)
     private val streams = OpenAiChatStream(upstream.web, endpoint, config, mapper, clock)
@@ -82,10 +81,10 @@ class OpenAiChatAdapter(
         val success = response.statusCode.is2xxSuccessful
         val completed = if (success) reader.read(body) else null
         if (completed != null) {
-            logSuccess(call, response, started, completed)
+            calls.answered(call.deployment, response, started, completed.usage)
             return completed
         }
-        logFailure(call, response, started)
+        calls.failed(call.deployment, response, classifier.errorFields(body), started)
         val status = response.statusCode.value()
         val failure =
             if (success) {
@@ -102,49 +101,8 @@ class OpenAiChatAdapter(
         started: Long,
     ): ProviderResult {
         val failure = TransportFailures.classify(cause)
-        log.warn(
-            "Provider call failed: deployment={} exception={} durationMs={}",
-            call.deployment.id.value,
-            cause.sourceName(),
-            clock.millis() - started,
-        )
+        calls.broken(call.deployment, cause, started)
         return ProviderResult.Failed(failure)
-    }
-
-    private fun logSuccess(
-        call: ChatCall,
-        response: ResponseEntity<ByteArray>,
-        started: Long,
-        completed: ProviderResult.Completed,
-    ) {
-        log.debug(
-            "Provider call answered: deployment={} status={} providerRequestId={} durationMs={} " +
-                "inputTokens={} outputTokens={} estimated={}",
-            call.deployment.id.value,
-            response.statusCode.value(),
-            providerRequestId(response.headers, OPENAI_REQUEST_ID),
-            clock.millis() - started,
-            completed.usage?.inputTokens?.value,
-            completed.usage?.outputTokens?.value,
-            completed.usage == null,
-        )
-    }
-
-    private fun logFailure(
-        call: ChatCall,
-        response: ResponseEntity<ByteArray>,
-        started: Long,
-    ) {
-        val fields = classifier.errorFields(response.body ?: EMPTY_BODY)
-        log.warn(
-            "Provider call failed: deployment={} status={} code={} type={} providerRequestId={} durationMs={}",
-            call.deployment.id.value,
-            response.statusCode.value(),
-            fields.code,
-            fields.type,
-            providerRequestId(response.headers, OPENAI_REQUEST_ID),
-            clock.millis() - started,
-        )
     }
 
     override fun close() {

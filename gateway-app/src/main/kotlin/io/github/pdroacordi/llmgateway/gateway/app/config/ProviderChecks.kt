@@ -47,8 +47,11 @@ internal class ProviderChecks(
     }
 
     /** Bytes. */
-    fun maxResponseSize(size: DataSize): Int {
-        check(size in MIN_RESPONSE_SIZE..MAX_RESPONSE_SIZE) { "$prefix.max-response-size must be 1KB to 256MB." }
+    fun maxResponseSize(
+        name: String,
+        size: DataSize,
+    ): Int {
+        check(size in MIN_RESPONSE_SIZE..MAX_RESPONSE_SIZE) { "$prefix.$name must be 1KB to 256MB." }
         return size.toBytes().toInt()
     }
 

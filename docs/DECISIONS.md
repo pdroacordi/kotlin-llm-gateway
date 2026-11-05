@@ -464,6 +464,9 @@ Full options and reasoning in [GW-01](specs/GW-01-chat-completions.md), ADR-GW-0
 ### Revision (2026-11-04)
 "A member moves from `extras` to a typed field when an item must read it" now means: when `gateway-core` or the app must read it. An adapter that translates a member reads it from `extras`, which this ADR already defines as the gateway API's members in the OpenAI shape. This replaces GW-01's expectation that GW-03 promotes the sampling members. Reason: promotion would give each member three states (typed, `null`, wrong type left in `extras`) and rewrite `OpenAiRequestWriter` for members no core policy reads. RL-02 reading `max_tokens` would be the first promotion. Options and reasoning in [GW-03](specs/GW-03-anthropic-adapter.md), ADR-GW-03-017.
 
+### Revision (2026-11-04)
+"Tree model only" has one exception: a large value the gateway only carries. An embeddings reply is read with Jackson's streaming API inside `gateway-providers`, and each vector is held as raw bytes (`RawJson` in core), neither a tree nor a `JsonValue`. Requests and every other reply stay on the tree. Reason: 6.3 million floats in one valid reply are over 1 GiB as trees, by estimate, and a tree rewrites literals. Core still knows no JSON library. Options and reasoning in [GW-05](specs/GW-05-embeddings.md), ADR-GW-05-005.
+
 ---
 
 <a id="adr-019"></a>

@@ -4,6 +4,7 @@ import io.netty.channel.ChannelOption
 import kotlinx.coroutines.reactor.awaitSingle
 import org.slf4j.LoggerFactory
 import org.springframework.core.codec.DecodingException
+import org.springframework.core.io.buffer.DataBuffer
 import org.springframework.core.io.buffer.DataBufferLimitException
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
@@ -12,6 +13,7 @@ import org.springframework.http.client.reactive.ReactorClientHttpConnector
 import org.springframework.web.reactive.function.client.ClientResponse
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.WebClientException
+import reactor.core.publisher.Mono
 import reactor.netty.http.HttpProtocol
 import reactor.netty.http.client.HttpClient
 import reactor.netty.resources.ConnectionProvider
@@ -39,6 +41,19 @@ internal fun withoutContentType(response: ClientResponse): ClientResponse =
         .headers { it.remove(HttpHeaders.CONTENT_TYPE) }
         .body { it.bodyFailuresAsTransport() }
         .build()
+
+// The chat path's read: the array is built on the event loop, which a reply of at most 16 MB can afford.
+private fun readOnEventLoop(response: ClientResponse): Mono<ResponseEntity<ByteArray>> =
+    withoutContentType(response).toEntity(ByteArray::class.java)
+
+/** Joins the body on the event loop, without a copy, and leaves the copy to [lane] (ADR-GW-05-012). */
+internal fun readOnLane(lane: CpuLane): (ClientResponse) -> Mono<ResponseEntity<ByteArray>> =
+    { response ->
+        withoutContentType(response).toEntity(DataBuffer::class.java).flatMap { entity ->
+            val answer = ResponseEntity.status(entity.statusCode).headers(entity.headers)
+            entity.body?.let { body -> lane.copy(body).map { answer.body(it) } } ?: Mono.just(answer.build())
+        }
+    }
 
 /** What a non-stream POST came to: an answer of any status, or a failure for [TransportFailures]. */
 internal sealed interface Exchange {
@@ -105,9 +120,10 @@ internal class UpstreamClient(
         timeout: Duration,
         headers: (HttpHeaders) -> Unit,
         body: ByteArray,
+        read: (ClientResponse) -> Mono<ResponseEntity<ByteArray>> = ::readOnEventLoop,
     ): Exchange =
         try {
-            Exchange.Received(post(endpoint, timeout, headers, body))
+            Exchange.Received(post(endpoint, timeout, headers, body, read))
         } catch (failure: TimeoutException) {
             Exchange.Broken(failure)
         } catch (failure: WebClientException) {
@@ -127,6 +143,7 @@ internal class UpstreamClient(
         timeout: Duration,
         headers: (HttpHeaders) -> Unit,
         body: ByteArray,
+        read: (ClientResponse) -> Mono<ResponseEntity<ByteArray>>,
     ): ResponseEntity<ByteArray> =
         web
             .post()
@@ -135,7 +152,7 @@ internal class UpstreamClient(
             .accept(MediaType.APPLICATION_JSON)
             .headers(headers)
             .bodyValue(body)
-            .exchangeToMono { withoutContentType(it).toEntity(ByteArray::class.java) }
+            .exchangeToMono(read)
             .timeout(timeout)
             .awaitSingle()
 

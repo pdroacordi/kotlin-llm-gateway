@@ -8,7 +8,6 @@ import tools.jackson.databind.node.ObjectNode
 
 /** [ChatChunk] to OpenAI's chunk: typed members first, then the provider's others in the order received. */
 object ChatChunkWriter {
-    const val USAGE_ESTIMATED_MEMBER = "usage_estimated"
     private const val OBJECT = "chat.completion.chunk"
 
     /** With [includeUsage], every chunk has `usage`, `null` but on the one that reports it; otherwise none has it. */
@@ -32,7 +31,7 @@ object ChatChunkWriter {
         }
         body.withExtras(chunk.extras, nodes)
         if (includeUsage && chunk.usage?.estimated == true) {
-            body.putObject(ChatExtensions.MEMBER).put(USAGE_ESTIMATED_MEMBER, true)
+            body.putObject(ChatExtensions.MEMBER).put(ChatExtensions.USAGE_ESTIMATED_MEMBER, true)
         }
         return body
     }

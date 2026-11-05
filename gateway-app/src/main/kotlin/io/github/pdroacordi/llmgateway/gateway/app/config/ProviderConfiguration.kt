@@ -6,8 +6,13 @@ import io.github.pdroacordi.llmgateway.gateway.core.chat.ModelResolver
 import io.github.pdroacordi.llmgateway.gateway.core.chat.PrefixModelResolver
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ProviderId
 import io.github.pdroacordi.llmgateway.gateway.core.chat.RoutingChatModelPort
+import io.github.pdroacordi.llmgateway.gateway.core.embedding.EmbeddingCpuPort
+import io.github.pdroacordi.llmgateway.gateway.core.embedding.EmbeddingModelPort
+import io.github.pdroacordi.llmgateway.gateway.core.embedding.RoutingEmbeddingModelPort
 import io.github.pdroacordi.llmgateway.gateway.providers.anthropic.AnthropicChatAdapter
 import io.github.pdroacordi.llmgateway.gateway.providers.openai.OpenAiChatAdapter
+import io.github.pdroacordi.llmgateway.gateway.providers.openai.OpenAiEmbeddingAdapter
+import io.github.pdroacordi.llmgateway.gateway.providers.upstream.CpuLane
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -16,10 +21,11 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Fallback
 import tools.jackson.databind.json.JsonMapper
 import java.time.Clock
+import java.time.Duration
 
 /**
  * The only `main` code that names `.gateway.providers.openai` and `.anthropic` (ARCH-12). Adapters are concrete beans,
- * so Spring's inferred `close()` runs; `@Fallback` leaves the router as the one [ChatModelPort] to inject by type.
+ * so Spring's inferred `close()` runs; `@Fallback` leaves each router as the one port to inject by type.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(
@@ -66,6 +72,26 @@ class ProviderConfiguration {
     }
 
     @Bean
+    @Fallback
+    @ConditionalOnProperty("llmgw.providers.openai.enabled", havingValue = "true")
+    fun openAiEmbeddingAdapter(
+        properties: OpenAiProperties,
+        mapper: JsonMapper,
+        clock: Clock,
+    ): OpenAiEmbeddingAdapter =
+        OpenAiEmbeddingAdapter(properties.toEmbeddingAdapterConfig(), mapper, clock).also { it.warmUp() }
+
+    // Only OpenAI: Anthropic has no embedding model, and an empty map is a valid start (ADR-GW-05-003).
+    @Bean
+    fun embeddingModelPort(openai: ObjectProvider<OpenAiEmbeddingAdapter>): EmbeddingModelPort =
+        RoutingEmbeddingModelPort(buildMap { openai.ifAvailable { put(ProviderId(OPENAI), it) } })
+
+    // The adapter's lane; a start with no embedding adapter has only the route's refusals to compute (ADR-GW-05-012).
+    @Bean
+    fun embeddingCpuPort(openai: ObjectProvider<OpenAiEmbeddingAdapter>): EmbeddingCpuPort =
+        openai.ifAvailable?.lane ?: CpuLane("embeddings-edge-cpu", 1, EDGE_LANE_QUEUE, EDGE_LANE_DEADLINE)
+
+    @Bean
     fun modelResolver(
         selection: ProviderSelectionProperties,
         anthropic: AnthropicProperties,
@@ -93,5 +119,11 @@ class ProviderConfiguration {
     private companion object {
         const val OPENAI = "openai"
         const val ANTHROPIC = "anthropic"
+
+        // Only refusals run here, and the budget bounds the bodies that wait.
+        const val EDGE_LANE_QUEUE = 256
+
+        // No adapter, so no validated embeddings.request-timeout. One parse of 10 MB takes under a second.
+        val EDGE_LANE_DEADLINE: Duration = Duration.ofSeconds(30)
     }
 }

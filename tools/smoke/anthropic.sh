@@ -35,13 +35,24 @@ check() {
     local name=$1 actual=$2 expected=$3
     if [ "$actual" = "$expected" ]; then pass "$name"; else fail "$name" "expected '$expected', got '$actual'"; fi
 }
+# Two computed values: both empty proves nothing, as when the mock stopped answering.
+check_same() {
+    local name=$1 actual=$2 expected=$3
+    if [ -z "$actual" ]; then fail "$name" "nothing to compare"; else check "$name" "$actual" "$expected"; fi
+}
 check_has() {
     local name=$1 file=$2 needle=$3
     if grep -qF -- "$needle" "$file"; then pass "$name"; else fail "$name" "no '$needle' in: $(cut -c1-300 "$file")"; fi
 }
 check_lacks() {
     local name=$1 file=$2 needle=$3
-    if grep -qF -- "$needle" "$file"; then fail "$name" "'$needle' found"; else pass "$name"; fi
+    if [ ! -s "$file" ]; then
+        fail "$name" "nothing to read"
+    elif grep -qF -- "$needle" "$file"; then
+        fail "$name" "'$needle' found"
+    else
+        pass "$name"
+    fi
 }
 
 # Sets $STATUS and fills $HEADERS and $BODY.
@@ -155,7 +166,7 @@ post "$(body ",\"parallel_tool_calls\":\"x\",$TOOLS")"
 check "4 parallel_tool_calls not a boolean status" "$STATUS" 400
 check_has "4 parallel_tool_calls not a boolean code" "$BODY" '"code":"unsupported_value"'
 check_has "4 parallel_tool_calls not a boolean param" "$BODY" '"param":"parallel_tool_calls"'
-check "4 no upstream call" "$(last_seq)" "$BEFORE"
+check_same "4 no upstream call" "$(last_seq)" "$BEFORE"
 
 # 5. The status table: a stream fails the same way before its first frame.
 while read -r injected status code; do
@@ -242,14 +253,14 @@ journal "$(header x-request-id)" >"$TMP/entry"
 check_has "7 blocks first upstream" "$TMP/entry" \
     '{\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"sig-1\"},{\"type\":\"redacted_thinking\",\"data\":\"opaque-1\"},{\"type\":\"text\",\"text\":\"b\"}]}'
 check_lacks "7 no llmgw upstream" "$TMP/entry" 'llmgw'
-upstream_body() { journal "$(header x-request-id)" | grep -oE '"body":"([^"\]|\.)*"'; }
+upstream_body() { journal "$(header x-request-id)" | grep -oE '"body":"([^"\\]|\\.)*"'; }
 post "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"a\"},{\"role\":\"assistant\",\"content\":\"b\"},{\"role\":\"user\",\"content\":\"c\"}]}"
 upstream_body >"$TMP/plain"
 post "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"a\"},{\"role\":\"assistant\",\"content\":\"b\",\"llmgw\":{\"thinking_blocks\":null}},{\"role\":\"user\",\"content\":\"c\"}]}"
 check "7 null blocks status" "$STATUS" 200
 upstream_body >"$TMP/nulled"
 check_has "7 null blocks reached the mock" "$TMP/nulled" '\"role\":\"assistant\"'
-check "7 null blocks count as absent" "$(cat "$TMP/nulled")" "$(cat "$TMP/plain")"
+check_same "7 null blocks count as absent" "$(cat "$TMP/nulled")" "$(cat "$TMP/plain")"
 
 # 8. Disconnect mid-stream.
 reset_mock

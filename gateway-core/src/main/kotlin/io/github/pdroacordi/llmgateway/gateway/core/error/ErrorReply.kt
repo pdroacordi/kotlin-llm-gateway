@@ -33,6 +33,7 @@ object ErrorCodes {
     const val REQUEST_TOO_LARGE = "request_too_large"
     const val UNSUPPORTED_MEDIA_TYPE = "unsupported_media_type"
     const val INTERNAL_ERROR = "internal_error"
+    const val GATEWAY_OVERLOADED = "gateway_overloaded"
     const val UNSUPPORTED_VALUE = "unsupported_value"
     const val UNSUPPORTED_PARAMETER = "unsupported_parameter"
     const val MODEL_NOT_FOUND = "model_not_found"
@@ -126,6 +127,12 @@ private val STORE_UNAVAILABLE =
         "The gateway cannot reach its team store.",
         ErrorCodes.TEAM_STORE_UNAVAILABLE,
     )
+private val OVERLOADED =
+    ServerFailureRow(
+        HttpStatuses.SERVICE_UNAVAILABLE,
+        "The gateway is at its limit for work in flight; retry later.",
+        ErrorCodes.GATEWAY_OVERLOADED,
+    )
 private val UNREADABLE =
     ServerFailureRow(
         HttpStatuses.BAD_GATEWAY,
@@ -133,7 +140,9 @@ private val UNREADABLE =
         ErrorCodes.UPSTREAM_ERROR,
     )
 
-/** The FND-04, GW-01 and GW-04 section 4 tables. Exhaustive, so a new variant does not compile without its row. */
+/**
+ * The FND-04, GW-01, GW-04 and GW-05 section 4 tables. Exhaustive, so a new variant does not compile without its row.
+ */
 fun GatewayError.toReply(requestId: RequestId): ErrorReply =
     when (this) {
         is GatewayError.InvalidRequest -> {
@@ -179,6 +188,10 @@ fun GatewayError.toReply(requestId: RequestId): ErrorReply =
 
         is GatewayError.RejectedRequest -> {
             clientError(status, "The request was rejected with HTTP status $status.", code = null)
+        }
+
+        is GatewayError.Overloaded -> {
+            OVERLOADED.reply(requestId, retryHeaders(retryAfter))
         }
 
         GatewayError.Internal -> {

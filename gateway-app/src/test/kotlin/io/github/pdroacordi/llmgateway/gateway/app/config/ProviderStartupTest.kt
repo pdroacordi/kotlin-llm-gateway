@@ -6,8 +6,12 @@ import io.github.pdroacordi.llmgateway.gateway.core.chat.ModelName
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ModelResolver
 import io.github.pdroacordi.llmgateway.gateway.core.chat.ProviderId
 import io.github.pdroacordi.llmgateway.gateway.core.chat.RoutingChatModelPort
+import io.github.pdroacordi.llmgateway.gateway.core.embedding.EmbeddingModelPort
+import io.github.pdroacordi.llmgateway.gateway.core.embedding.RoutingEmbeddingModelPort
+import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import io.github.pdroacordi.llmgateway.gateway.providers.anthropic.AnthropicChatAdapter
 import io.github.pdroacordi.llmgateway.gateway.providers.openai.OpenAiChatAdapter
+import io.github.pdroacordi.llmgateway.gateway.providers.openai.OpenAiEmbeddingAdapter
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -19,6 +23,11 @@ import org.junit.jupiter.params.provider.ValueSource
 import org.springframework.boot.test.system.CapturedOutput
 import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.context.ConfigurableApplicationContext
+import tools.jackson.databind.json.JsonMapper
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 
 /** ADR-GW-03-004: what each combination of enabled providers starts, or why it stops. */
 @ExtendWith(OutputCaptureExtension::class)
@@ -64,6 +73,56 @@ class ProviderStartupTest {
             assertEquals(0, context.getBeanNamesForType(OpenAiChatAdapter::class.java).size)
             assertEquals(ProviderId("anthropic"), resolve(context, "anything"))
         }
+    }
+
+    @Test
+    fun `the default start has the embedding adapter behind the embedding router`() {
+        context().use { context ->
+            assertEquals(1, context.getBeanNamesForType(OpenAiEmbeddingAdapter::class.java).size)
+            assertTrue(context.getBean(EmbeddingModelPort::class.java) is RoutingEmbeddingModelPort)
+        }
+    }
+
+    @Test
+    fun `with OpenAI off and no key the app starts and the embeddings route gives the 400 for the model`() {
+        val args =
+            arrayOf(
+                "--llmgw.providers.openai.enabled=false",
+                "--llmgw.providers.openai.api-key=",
+                "--llmgw.providers.openai.embeddings.request-timeout=0s",
+                "--llmgw.providers.anthropic.enabled=true",
+                "--llmgw.providers.anthropic.api-key=k",
+                "--llmgw.providers.default-provider=anthropic",
+            )
+        context(*args).use { context ->
+            assertEquals(0, context.getBeanNamesForType(OpenAiEmbeddingAdapter::class.java).size)
+
+            val response = embed(context)
+
+            assertEquals(400, response.statusCode()) { response.body() }
+            val error =
+                JsonMapper
+                    .builder()
+                    .build()
+                    .readTree(response.body())
+                    .get("error")
+            assertEquals("unsupported_value", error.get("code").stringValue())
+            assertEquals("model", error.get("param").stringValue())
+        }
+    }
+
+    @Test
+    fun `a bad embeddings value stops the start when OpenAI is enabled, naming the property`() {
+        val chain = failure("--llmgw.providers.openai.embeddings.max-connections=0")
+
+        assertTrue("llmgw.providers.openai.embeddings.max-connections" in chain) { chain }
+    }
+
+    @Test
+    fun `a budget above half the heap stops the start, naming the property`() {
+        val message = failure("--llmgw.providers.openai.embeddings.max-in-flight-bytes=1TB")
+
+        assertTrue("llmgw.providers.openai.embeddings.max-in-flight-bytes" in message) { message }
     }
 
     @Test
@@ -152,6 +211,18 @@ class ProviderStartupTest {
             )
 
         assertTrue("llmgw.providers.openai.enabled" in chain) { chain }
+    }
+
+    private fun embed(context: ConfigurableApplicationContext): HttpResponse<String> {
+        val port = context.environment.getProperty("local.server.port")
+        val request =
+            HttpRequest
+                .newBuilder(URI.create("http://127.0.0.1:$port/v1/embeddings"))
+                .header("Authorization", TestKeys.BEARER)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("""{"model":"text-embedding-3-small","input":"a"}"""))
+                .build()
+        return HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString())
     }
 
     private fun resolve(

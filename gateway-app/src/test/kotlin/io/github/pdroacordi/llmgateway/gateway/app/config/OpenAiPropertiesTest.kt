@@ -38,6 +38,17 @@ class OpenAiPropertiesTest {
                     totalTimeout = Duration.ofMinutes(30),
                     maxEventSize = DataSize.ofMegabytes(1),
                 ),
+            embeddings =
+                EmbeddingProperties(
+                    requestTimeout = Duration.ofSeconds(120),
+                    maxResponseSize = DataSize.ofMegabytes(256),
+                    maxConnections = 64,
+                    maxInFlightBytes = null,
+                    defaultDimensions = 3072,
+                    cpuThreads = 4,
+                    cpuQueueSize = 256,
+                    busyRetryAfter = Duration.ofSeconds(5),
+                ),
         )
 
     private fun message(properties: OpenAiProperties): String =
@@ -63,6 +74,14 @@ class OpenAiPropertiesTest {
                     "llmgw.providers.openai.stream.idle-timeout" to "60s",
                     "llmgw.providers.openai.stream.total-timeout" to "30m",
                     "llmgw.providers.openai.stream.max-event-size" to "1MB",
+                    "llmgw.providers.openai.embeddings.request-timeout" to "120s",
+                    "llmgw.providers.openai.embeddings.max-response-size" to "256MB",
+                    "llmgw.providers.openai.embeddings.max-connections" to "64",
+                    "llmgw.providers.openai.embeddings.max-in-flight-bytes" to "512MB",
+                    "llmgw.providers.openai.embeddings.default-dimensions" to "3072",
+                    "llmgw.providers.openai.embeddings.cpu-threads" to "4",
+                    "llmgw.providers.openai.embeddings.cpu-queue-size" to "256",
+                    "llmgw.providers.openai.embeddings.busy-retry-after" to "5s",
                 ),
             ),
         )
@@ -76,6 +95,172 @@ class OpenAiPropertiesTest {
         assertEquals(500, bound.pool.maxConnections)
         assertEquals(Duration.ofMinutes(30), bound.stream.totalTimeout)
         assertEquals(DataSize.ofMegabytes(1), bound.stream.maxEventSize)
+        assertEquals(DataSize.ofMegabytes(256), bound.embeddings.maxResponseSize)
+    }
+
+    private fun embeddingMessage(properties: OpenAiProperties): String =
+        assertThrows<IllegalStateException> { properties.toEmbeddingAdapterConfig(HEAP) }.message.orEmpty()
+
+    @Test
+    fun `the embedding values reach the embedding config, with the shared ones and chat's pool timings`() {
+        val config = valid.toEmbeddingAdapterConfig(HEAP)
+
+        assertEquals(URI.create("https://api.example.test/v1"), config.baseUrl)
+        assertEquals("sk-canary-key", config.apiKey.reveal())
+        assertEquals(Duration.ofSeconds(5), config.connectTimeout)
+        assertEquals(Duration.ofSeconds(120), config.requestTimeout)
+        assertEquals(256 * 1024 * 1024, config.maxResponseBytes)
+        assertEquals(64, config.pool.maxConnections)
+        assertEquals(Duration.ofSeconds(5), config.pool.pendingAcquireTimeout)
+        assertEquals(Duration.ofSeconds(30), config.pool.maxIdleTime)
+        assertEquals(Duration.ofMinutes(5), config.pool.maxLifeTime)
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["PT0S", "PT-1S"])
+    fun `an embedding request timeout must be positive`(value: String) {
+        val embeddings = valid.embeddings.copy(requestTimeout = Duration.parse(value))
+
+        assertEquals(
+            "llmgw.providers.openai.embeddings.request-timeout must be positive.",
+            embeddingMessage(valid.copy(embeddings = embeddings)),
+        )
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = [1023, 256 * 1024 * 1024 + 1])
+    fun `an embedding reply size outside 1KB to 256MB is refused, naming its own property`(bytes: Long) {
+        val embeddings = valid.embeddings.copy(maxResponseSize = DataSize.ofBytes(bytes))
+
+        assertEquals(
+            "llmgw.providers.openai.embeddings.max-response-size must be 1KB to 256MB.",
+            embeddingMessage(valid.copy(embeddings = embeddings)),
+        )
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = [0, -1])
+    fun `embedding max-connections must be positive`(connections: Int) {
+        val embeddings = valid.embeddings.copy(maxConnections = connections)
+
+        assertEquals(
+            "llmgw.providers.openai.embeddings.max-connections must be positive.",
+            embeddingMessage(valid.copy(embeddings = embeddings)),
+        )
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = [0, -1])
+    fun `embedding cpu-threads must be positive`(threads: Int) {
+        val embeddings = valid.embeddings.copy(cpuThreads = threads)
+
+        assertEquals(
+            "llmgw.providers.openai.embeddings.cpu-threads must be positive.",
+            embeddingMessage(valid.copy(embeddings = embeddings)),
+        )
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = [0, -1])
+    fun `embedding default-dimensions must be positive`(dimensions: Int) {
+        val embeddings = valid.embeddings.copy(defaultDimensions = dimensions)
+
+        assertEquals(
+            "llmgw.providers.openai.embeddings.default-dimensions must be positive.",
+            embeddingMessage(valid.copy(embeddings = embeddings)),
+        )
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["PT0S", "PT-1S"])
+    fun `embedding busy-retry-after must be positive`(value: String) {
+        val embeddings = valid.embeddings.copy(busyRetryAfter = Duration.parse(value))
+
+        assertEquals(
+            "llmgw.providers.openai.embeddings.busy-retry-after must be positive.",
+            embeddingMessage(valid.copy(embeddings = embeddings)),
+        )
+    }
+
+    @Test
+    fun `a budget below one reply is refused, since that reply could never run`() {
+        val embeddings = valid.embeddings.copy(maxInFlightBytes = DataSize.ofMegabytes(255))
+
+        assertEquals(
+            "llmgw.providers.openai.embeddings.max-in-flight-bytes must be at least embeddings.max-response-size.",
+            embeddingMessage(valid.copy(embeddings = embeddings)),
+        )
+    }
+
+    @Test
+    fun `a budget of exactly one reply is valid`() {
+        val embeddings = valid.embeddings.copy(maxInFlightBytes = DataSize.ofMegabytes(256))
+
+        assertEquals(4, valid.copy(embeddings = embeddings).toEmbeddingAdapterConfig(HEAP).cpuThreads)
+    }
+
+    @Test
+    fun `an unset budget is a quarter of the heap`() {
+        assertEquals(HEAP / 4, valid.embeddings.inFlightBytes(HEAP))
+    }
+
+    @Test
+    fun `a set budget is what it says`() {
+        val embeddings = valid.embeddings.copy(maxInFlightBytes = DataSize.ofMegabytes(300))
+
+        assertEquals(DataSize.ofMegabytes(300).toBytes(), embeddings.inFlightBytes(HEAP))
+    }
+
+    @Test
+    fun `a budget of half the heap is valid`() {
+        val embeddings = valid.embeddings.copy(maxInFlightBytes = DataSize.ofBytes(HEAP / 2))
+
+        assertEquals(4, valid.copy(embeddings = embeddings).toEmbeddingAdapterConfig(HEAP).cpuThreads)
+    }
+
+    @Test
+    fun `a budget above half the heap is refused, naming the property`() {
+        val embeddings = valid.embeddings.copy(maxInFlightBytes = DataSize.ofBytes(HEAP / 2 + 1))
+
+        assertEquals(
+            "llmgw.providers.openai.embeddings.max-in-flight-bytes must be at most half the heap, ${HEAP / 2} bytes: " +
+                "heap holds about twice the budget (ADR-GW-05-011).",
+            embeddingMessage(valid.copy(embeddings = embeddings)),
+        )
+    }
+
+    @Test
+    fun `an unset budget below one reply starts, with a warning that names both properties`() {
+        val smallHeap = DataSize.ofMegabytes(512).toBytes()
+
+        assertEquals(4, valid.toEmbeddingAdapterConfig(smallHeap).cpuThreads)
+        val warning = checkNotNull(valid.embeddings.heapWarning(smallHeap))
+        assertTrue("max-in-flight-bytes" in warning && "max-response-size" in warning) { warning }
+    }
+
+    @Test
+    fun `a budget that holds a whole reply needs no warning`() {
+        assertEquals(null, valid.embeddings.heapWarning(HEAP))
+        val set = valid.embeddings.copy(maxInFlightBytes = DataSize.ofMegabytes(256))
+        assertEquals(null, set.heapWarning(DataSize.ofMegabytes(512).toBytes()))
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = [0, -1])
+    fun `embedding cpu-queue-size must not be below one`(size: Int) {
+        val embeddings = valid.embeddings.copy(cpuQueueSize = size)
+
+        assertEquals(
+            "llmgw.providers.openai.embeddings.cpu-queue-size must be positive.",
+            embeddingMessage(valid.copy(embeddings = embeddings)),
+        )
+    }
+
+    @Test
+    fun `the embedding config checks what it shares with chat`() {
+        assertTrue("OPENAI_API_KEY" in embeddingMessage(valid.copy(apiKey = ApiKey(""))))
+        assertTrue("base-url" in embeddingMessage(valid.copy(baseUrl = "ftp://host/v1")))
+        assertTrue("connect-timeout" in embeddingMessage(valid.copy(connectTimeout = Duration.ZERO)))
     }
 
     @Test
@@ -225,5 +410,9 @@ class OpenAiPropertiesTest {
         val pool = valid.pool.copy(maxConnections = 0)
 
         assertTrue("max-connections" in message(valid.copy(pool = pool)))
+    }
+
+    private companion object {
+        val HEAP: Long = DataSize.ofGigabytes(4).toBytes()
     }
 }

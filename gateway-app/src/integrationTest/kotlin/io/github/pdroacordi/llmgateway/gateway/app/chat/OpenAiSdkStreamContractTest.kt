@@ -93,7 +93,7 @@ class OpenAiSdkStreamContractTest : MockBackedTest() {
         last.validate()
         assertTrue(last.usage().isPresent)
         val extension = last._allProperties()[ChatExtensions.MEMBER]
-        val member = extension?.asObject()?.getOrNull()?.get(ChatChunkWriter.USAGE_ESTIMATED_MEMBER)
+        val member = extension?.asObject()?.getOrNull()?.get(ChatExtensions.USAGE_ESTIMATED_MEMBER)
         assertEquals(JsonValue.from(true), member)
     }
 

@@ -1,13 +1,24 @@
 ---
 id: systems/provider-adapters
 type: system
-title: Provider adapters: OpenAI and Anthropic behind ChatModelPort, selected by a routing port, with every upstream failure a sealed value
+title: Provider adapters: OpenAI and Anthropic behind ChatModelPort, OpenAI behind EmbeddingModelPort, selected by routing ports, with every upstream failure a sealed value
 status: active
-tags: [adapters, openai, anthropic, openai-compat, webclient, errors, json, blockhound, sse, streaming, tools, thinking]
-related: [patterns/member-policy-table-for-a-foreign-provider, patterns/typed-core-with-json-extras, patterns/upstream-bytes-then-pure-classification, patterns/one-error-funnel, patterns/cold-event-flow-commits-at-first-frame, patterns/copy-and-release-pooled-buffers-before-a-flow, patterns/raw-sse-frames-flushed-per-event, systems/request-context-and-errors, systems/mock-provider, gotchas/kotlinx-reactive-await-loads-context-injectors-on-first-use, gotchas/spring-coroutine-handlers-resume-on-default-executor-after-delay, gotchas/client-stall-handler-moves-slow-readers-onto-idle-timeout, gotchas/pooled-connection-closed-without-connection-close-costs-a-502, bugs/gateway-body-limit-on-functional-route-gives-500, bugs/grafana-anonymous-admin-reachable-through-dns-rebinding, bugs/adapter-broken-chunked-framing-raised-as-a-bug, bugs/first-frame-on-a-closing-channel-leaves-the-stream-flow-running, bugs/client-write-timeout-cuts-a-slow-client-that-is-still-reading, bugs/client-stall-handler-misses-a-stall-while-the-queue-grows, gotchas/netty-idle-observe-output-counts-queue-growth-as-progress, gotchas/reactor-netty-do-on-connection-runs-per-http-request, gotchas/reactor-netty-refuses-an-unparsable-host-before-webflux, gotchas/tls-peer-close-during-handshake-is-a-closed-channel-exception, gotchas/conditional-on-property-and-the-binder-read-true-differently, gotchas/json-number-literals-normalise-through-big-decimal, gotchas/jackson-3-value-accessors-throw-on-a-null-node, bugs/anthropic-stream-keeps-message-start-output-tokens, bugs/provider-enabled-true-spellings-disagree-with-the-bean-condition, bugs/held-thinking-block-grows-past-its-limit-until-it-stops, runs/2026-11-04-smoke-sse-streaming, runs/2026-11-04-smoke-anthropic-adapter]
+tags: [adapters, embeddings, openai, anthropic, openai-compat, webclient, errors, json, blockhound, sse, streaming, tools, thinking]
+related: [patterns/opaque-json-value-as-byte-range, gotchas/netty-copies-a-heap-buffer-to-direct-on-write, gotchas/reactor-netty-send-writes-its-whole-prefetch-past-unwritable, gotchas/reactor-jvm-fatal-error-leaves-the-subscriber-unsignalled, runs/2026-11-05-smoke-embeddings, patterns/member-policy-table-for-a-foreign-provider, patterns/typed-core-with-json-extras, patterns/upstream-bytes-then-pure-classification, patterns/one-error-funnel, patterns/cold-event-flow-commits-at-first-frame, patterns/copy-and-release-pooled-buffers-before-a-flow, patterns/raw-sse-frames-flushed-per-event, systems/request-context-and-errors, systems/mock-provider, gotchas/kotlinx-reactive-await-loads-context-injectors-on-first-use, gotchas/spring-coroutine-handlers-resume-on-default-executor-after-delay, gotchas/client-stall-handler-moves-slow-readers-onto-idle-timeout, gotchas/pooled-connection-closed-without-connection-close-costs-a-502, bugs/gateway-body-limit-on-functional-route-gives-500, bugs/grafana-anonymous-admin-reachable-through-dns-rebinding, bugs/adapter-broken-chunked-framing-raised-as-a-bug, bugs/first-frame-on-a-closing-channel-leaves-the-stream-flow-running, bugs/client-write-timeout-cuts-a-slow-client-that-is-still-reading, bugs/client-stall-handler-misses-a-stall-while-the-queue-grows, gotchas/netty-idle-observe-output-counts-queue-growth-as-progress, gotchas/reactor-netty-do-on-connection-runs-per-http-request, gotchas/reactor-netty-refuses-an-unparsable-host-before-webflux, gotchas/tls-peer-close-during-handshake-is-a-closed-channel-exception, gotchas/conditional-on-property-and-the-binder-read-true-differently, gotchas/json-number-literals-normalise-through-big-decimal, gotchas/jackson-3-value-accessors-throw-on-a-null-node, bugs/anthropic-stream-keeps-message-start-output-tokens, bugs/provider-enabled-true-spellings-disagree-with-the-bean-condition, bugs/held-thinking-block-grows-past-its-limit-until-it-stops, runs/2026-11-04-smoke-sse-streaming, runs/2026-11-04-smoke-anthropic-adapter]
 created: 2026-11-03
-updated: 2026-11-04
+updated: 2026-11-05
 source_files:
+  - gateway-core/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/core/embedding/EmbeddingModelPort.kt
+  - gateway-core/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/core/embedding/EmbeddingReplyBudget.kt
+  - gateway-core/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/core/embedding/EmbeddingReplyLimits.kt
+  - gateway-providers/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/providers/openai/OpenAiEmbeddingAdapter.kt
+  - gateway-providers/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/providers/openai/OpenAiEmbeddingReader.kt
+  - gateway-providers/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/providers/json/JsonMembers.kt
+  - gateway-providers/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/providers/upstream/CpuLane.kt
+  - gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/embedding/EmbeddingHandler.kt
+  - gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/embedding/EmbeddingAdmission.kt
+  - gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/embedding/EmbeddingResponseWriter.kt
+  - gateway-app/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/app/embedding/ReplyWritePacer.kt
   - gateway-core/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/core/json/JsonValue.kt
   - gateway-core/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/core/chat/ChatModelPort.kt
   - gateway-core/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/core/chat/RoutingChatModelPort.kt
@@ -88,6 +99,11 @@ source_files:
 15. `inputTokens` means every input token the provider processed, cached and cache-write included, on every adapter; `cachedInputTokens` is a subset. `AnthropicUsageReaderTest`, `AnthropicChatEndToEndTest`.
 16. `llmgw` reaches no provider, except as a translation of what it holds for that provider, and an echoed thinking block keeps only its allow-listed members. `OpenAiRequestWriterTest`, `AnthropicRequestWriterTest`, `AnthropicThinkingRoundTripTest`.
 17. A provider's `enabled` and its adapter's presence agree, or the start stops. `ProviderStartupTest`.
+18. A vector is carried as its bytes and never parsed: a reply is byte-identical to the provider's, literals and whitespace included. `OpenAiEmbeddingReaderTest`, `EmbeddingsEndToEndTest`.
+19. An embeddings call's reservations are released once on every path, and a full budget refuses before any upstream call. `EmbeddingBudgetTest`, `ReplyHoldTest`.
+20. Work that grows with an embeddings body runs on the lane, never on `reactor-http-*` or `parallel-*`, and a full or closed lane is 503 `gateway_overloaded`, never 500. `EmbeddingThreadTest`, `OpenAiEmbeddingAdapterFailureTest`, `EmbeddingOverloadTest`.
+21. A client that stops reading holds about one 1 MiB slice of a reply in the channel, not the reply. `EmbeddingSlicedWriteTest`.
+22. A full lane refuses only a request's parse, never a stage after the upstream call, so a reply the provider sent is not dropped for load. `OpenAiEmbeddingAdapterFailureTest`, `CpuLaneTest`.
 
 ## How it works
 
@@ -126,6 +142,16 @@ source_files:
 - **Exposure.** A team key is the control ([auth-and-teams](auth-and-teams.md)): a request reaches an adapter only after `AuthWebFilter`, and `ChatCall.team` is not forwarded to a provider. `server.address` defaults to `127.0.0.1`, and a non-loopback bind is not refused; TLS is the edge proxy's (ADR-GW-04-018). A CORS preflight under `/v1` is a 401 with no `Access-Control-*` header, so a browser does not send the JSON POST.
 - **What typed members change** (GW-01 section 4, "Narrower than OpenAI"). Request: an absent `content` goes upstream as `"content":null`. Response: an absent `content` or `finish_reason` becomes `null`, a `finish_reason` that is not a string becomes `null`, an `index` that is not an integer becomes `0`. Both ways: a number keeps its value, not its spelling (`1e5` becomes `1E+5`), and `-0.0` becomes `0.0`. `ChatRequestReaderTest`, `OpenAiResponseReaderTest`, `ChatCompletionsEndToEndTest`.
 
+## Embeddings
+
+`POST /v1/embeddings` answers as OpenAI does (GW-05). `EmbeddingHandler` reads the body, `EmbeddingService` resolves the deployment and calls `EmbeddingModelPort`, and `RoutingEmbeddingModelPort` holds only OpenAI: a model on a provider with no embeddings is 400 `unsupported_value`, from the absence of a port (ADR-GW-05-003).
+
+- **Adapter** (ADR-GW-05-002). `OpenAiEmbeddingAdapter`, with its own `UpstreamClient` and pool `embeddings-openai`, and a limit 16 times chat's. `encoding_format` and every other extra are forwarded as they came (ADR-GW-05-004).
+- **Reply scan** (ADR-GW-05-005). The exception to "every body is read through `exactTreeReader`": `JsonMembers` walks one parser and copies each vector's byte range into `RawJson`. Small members go through the tree on their slice. Only `.json` uses the streaming API.
+- **Lane** (ADR-GW-05-012). `CpuLane`, owned by the adapter and lent to the handler through `EmbeddingCpuPort`, runs the parse and typing, the upstream write, the reply's copy to an array, the scan and the error read, each with a deadline after `subscribeOn`. A counter refuses only the parse, past `cpu-threads` plus `cpu-queue-size`; later stages count towards it, are never refused for it, and are bounded by the in-flight budget, since each call holds a reservation. In the adapter a `RejectedExecutionException` is a closed lane, so shutdown only. The embedding path decodes to a joined `DataBuffer` and `CpuLane.copy` makes the array: exactly one of the copy and a cancel takes the buffer and releases it. Chat keeps `ByteArrayDecoder`.
+- **Budget** (ADR-GW-05-011). `EmbeddingAdmission` reserves twice the body before the parse and the priced reply after typing, from the one `EmbeddingReplyBudget`; `ReplyHold` holds both to the end of the write, and `EmbeddingReplyFilter`'s `doFinally` ends it. No queue. Unset, `max-in-flight-bytes` is 25% of the heap. Heap in flight is at most 2 x the budget, so half the heap at the default; the other half holds chat, the JVM and at most `cpu-threads` running parse trees, which no reservation counts. All of that is arithmetic: no reply over 35 MB has run.
+- **Write** (ADR-GW-05-013). `EmbeddingSlicedBody` sets `Content-Length` and writes 1 MiB views of the one array, one flushed group each. On a reply of more than one slice `ReplyWritePacer` holds each slice until the channel is writable, because neither `writeWith` nor `writeAndFlushWith` stops at an unwritable channel. The source runs on the channel's event loop, where a send writes inline.
+
 ## Failure behaviour
 
 Fail-closed: there is no answer to give.
@@ -147,6 +173,9 @@ Fail-closed: there is no answer to give.
 - Client slow: back-pressure to the provider, and nothing is dropped above the limit of `idle-timeout`, about 11.8 to 19.7 KB/s at the defaults on 16 KB frames. Below it the stream ends with an `upstream_timeout` frame, behind the backlog, with an ERROR `Stream failed` and the adapter's WARN against a healthy provider (How it works).
 - Client stops reading: bytes pending and no write progress for `client-write-timeout`, however many frames the provider still sends, so the connection closes and the stream ends `cancelled`, with one INFO from `ClientStallHandler` carrying the connection ID and no request ID: on a stream `Stream cancelled` follows and the two share no key, and a non-stream cut leaves only that line (OBS-03). A stream that fits the queues ends first: `completed` means handed to Netty, not read by the client, so a stalled client can be logged `Stream completed` (DEBUG) while it lost the tail; the provider did finish, so usage is right (smoke finding 3).
 - A bug in the flow after commit: one ERROR with the stack trace, `internal_error` frame, clean end. Only what the flow cannot catch reaches the mapper's committed branch.
+- Embeddings budget full, lane queue full at the parse, lane closed, or the pool's pending queue full: 503 `gateway_overloaded` with `retry-after` and `retry-after-ms`, at once. Nothing goes upstream, and a bad body under a full budget gets this too; only a lane closed by shutdown can drop a call the provider may bill. One log line, no stack trace (ADR-GW-05-011). On chat the pool's pending limit is still `provider_unavailable` (GW-16).
+- Embeddings stage past its deadline: 504 `upstream_timeout` in the adapter, 503 `gateway_overloaded` on the request's parse. A JVM-fatal error sends no signal, so the deadline ends the stage.
+- Embeddings non-2xx body over 64 KiB: not read, the row for its status with no `code` or `param` (ADR-GW-05-014).
 - Response over `max-response-size`: 502 `upstream_error`, never 413.
 - Provider 2xx with an unreadable body: 502 `upstream_error`; the body is not logged.
 - Provider usage missing or unreadable: estimated and flagged; the call succeeds.
@@ -176,6 +205,14 @@ Fail-closed: there is no answer to give.
 | `llmgw.providers.openai.stream.idle-timeout` | `60s` | > 0, at most `total-timeout`; between upstream buffers, so it also runs while a slow client holds the next read back |
 | `llmgw.providers.openai.stream.total-timeout` | `30m` | > 0 |
 | `llmgw.providers.openai.stream.max-event-size` | `1MB` | 1 KB to 16 MB, per event, counted over its lines without line breaks |
+| `llmgw.providers.openai.embeddings.request-timeout` | `120s` | > 0, whole call, and each stage on the lane |
+| `llmgw.providers.openai.embeddings.max-response-size` | `256MB` | 1 KB to 256 MB; over it 502 `upstream_error` |
+| `llmgw.providers.openai.embeddings.max-connections` | `64` | > 0, upstream reads; it does not cap memory |
+| `llmgw.providers.openai.embeddings.max-in-flight-bytes` | unset | Unset, 25% of `Runtime.maxMemory()`. Set, at least `max-response-size` and at most 50% of the heap, or the start fails. An unset budget below `max-response-size` starts with a WARN, and a call priced above it is refused |
+| `llmgw.providers.openai.embeddings.default-dimensions` | `3072` | > 0, what a request with no `dimensions` is priced at |
+| `llmgw.providers.openai.embeddings.cpu-threads` | `4` | > 0, the lane's threads |
+| `llmgw.providers.openai.embeddings.cpu-queue-size` | `256` | > 0, stages that may wait beyond the threads before a parse is refused |
+| `llmgw.providers.openai.embeddings.busy-retry-after` | `5s` | > 0, `Retry-After` on `gateway_overloaded` |
 | `llmgw.providers.anthropic.enabled` | `false` | `true` in the `local` profile; written `true` or `false` |
 | `llmgw.providers.anthropic.model-prefixes` | `claude-`, `mock-claude` | Case-sensitive; removed by RTE-01 |
 | `llmgw.providers.anthropic.base-url` | `https://api.anthropic.com/v1` | As OpenAI's |
@@ -195,10 +232,15 @@ The `local` profile (`application-local.yaml`) points both providers at `http://
 - [GW-02 spec](../../specs/GW-02-sse-streaming.md), ADR-GW-02-001 to -013: port shape and commit point, chunk translation, the SSE parser, frames, usage on a stream, deadlines, failure after commit, cancellation and buffers, back-pressure, stream headers, limits, test strategy, architecture rules.
 - [ADR-020](../../DECISIONS.md#adr-020): the translation contract for a provider of another shape.
 - [GW-03 spec](../../specs/GW-03-anthropic-adapter.md), ADR-GW-03-001 to -024: no SDK, version and sampling, selection, `enabled`, the member policy, `max_tokens`, no chunk at `message_start`, usage, stop reasons, thinking, tool indexes, error rows, `user` hashing, conversation shape, forced `tool_choice`, reading `extras`, the extraction, `@Fallback` beans.
+- [GW-05 spec](../../specs/GW-05-embeddings.md), ADR-GW-05-001 to -014: the port, its own adapter and pool, byte-range vectors, the budget, the lane, the sliced write, the error guard.
 - [ADR-004](../../DECISIONS.md#adr-004), [ADR-015](../../DECISIONS.md#adr-015).
 
 ## Gotchas
 
+- A send of a `Flux` runs up to 128 items past an unwritable channel, and `writeAndFlushWith` is the same send: only the source can pace a large body ([gotcha](../gotchas/reactor-netty-send-writes-its-whole-prefetch-past-unwritable.md)).
+- A heap buffer is copied whole to direct memory on the event loop at write ([gotcha](../gotchas/netty-copies-a-heap-buffer-to-direct-on-write.md)).
+- `jvm.buffer.memory.used{id=direct}` reads 0 through 33 MB replies, so direct memory needs NMT or Netty's metrics ([gotcha](../gotchas/jvm-direct-buffer-metric-misses-netty-pooled-memory.md)).
+- The mock's float vectors are sparse, so its largest reply is about 35 MB and ADR-GW-05-006's 198 MiB has never run (OPS-06).
 - `DataBufferLimitException` is the adapter's to translate: a bare one that reaches the HTTP edge is a 500. On the request side `readJsonObject` translates its own ([bugs/gateway-body-limit-on-functional-route-gives-500](../bugs/gateway-body-limit-on-functional-route-gives-500.md)).
 - Wait with `Mono.timeout`, never `withTimeout`: its continuation lands on a thread BlockHound does not watch ([gotchas/spring-coroutine-handlers-resume-on-default-executor-after-delay](../gotchas/spring-coroutine-handlers-resume-on-default-executor-after-delay.md)).
 - With `USE_BIG_DECIMAL_FOR_FLOATS`, a float past `BigDecimal`'s range (`1e99999999999`) raises a bare `NumberFormatException` quoting the literal, not a `JacksonException`, so a catch of `JacksonException` alone gives a client a 500 and puts the value in the log. Read through `readTreeOrNull`.

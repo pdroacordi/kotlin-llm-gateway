@@ -43,7 +43,7 @@ class StreamTally(
                 choice.delta.content
                     .orEmpty()
                     .length
-                    .toLong(),
+                    .toLong() + toolCallCharacters(choice.delta.extras),
                 Long::plus,
             )
         }

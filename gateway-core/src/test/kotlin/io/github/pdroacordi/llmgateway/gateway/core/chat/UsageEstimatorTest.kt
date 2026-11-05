@@ -130,9 +130,133 @@ class UsageEstimatorTest {
         assertTrue(usage.estimated)
     }
 
+    @Test
+    fun `a tool-only reply counts the function name and arguments, flagged estimated`() {
+        val usage = estimator.estimate(request(null), toolReply(null, WEATHER))
+
+        // ceil((11 + 16) / 4).
+        assertEquals(TokenCount(7), usage.outputTokens)
+        assertTrue(usage.estimated)
+    }
+
+    @Test
+    fun `text and tool calls round once per choice`() {
+        // ceil((3 + 27) / 4), where rounding text and tools apart would give 1 + 7.
+        assertEquals(TokenCount(8), estimator.estimate(request(null), toolReply("abc", WEATHER)).outputTokens)
+    }
+
+    @Test
+    fun `two calls of one choice round once`() {
+        // ceil((3 + 3) / 4), where rounding each call would give 2.
+        val completion = toolReply(null, call("a", "12"), call("b", "12"))
+
+        assertEquals(TokenCount(2), estimator.estimate(request(null), completion).outputTokens)
+    }
+
+    @Test
+    fun `two choices round apart`() {
+        val message = AssistantMessage(null, toolCalls(call("a", "1")))
+        val completion =
+            ChatCompletion(
+                "id",
+                1,
+                ModelName("m"),
+                listOf(
+                    ChatChoice(0, message, FinishReason("tool_calls")),
+                    ChatChoice(1, message, FinishReason("tool_calls")),
+                ),
+            )
+
+        assertEquals(TokenCount(2), estimator.estimate(request(null), completion).outputTokens)
+    }
+
+    @Test
+    fun `an id, a type and any other member of a call count nothing`() {
+        val function = obj("name" to text("a"), "arguments" to text("1"), "y" to text("long"))
+        val call = obj("id" to text("call_1"), "type" to text("function"), "x" to text("long"), "function" to function)
+
+        assertEquals(2L, toolCallCharacters(toolCalls(call)))
+    }
+
+    @Test
+    fun `a name with arguments of another type counts the name alone`() {
+        val call = obj("function" to obj("name" to text("a"), "arguments" to obj("city" to text("Paris"))))
+
+        assertEquals(1L, toolCallCharacters(toolCalls(call)))
+    }
+
+    @Test
+    fun `arguments with a name of another type count the arguments alone`() {
+        val call = obj("function" to obj("name" to JsonValue.Number("7"), "arguments" to text("12")))
+
+        assertEquals(2L, toolCallCharacters(toolCalls(call)))
+    }
+
+    @Test
+    fun `a tool_calls member of the wrong shape counts 0 and raises nothing`() {
+        val shapes =
+            listOf(
+                JsonValue.Null,
+                JsonValue.Number("7"),
+                text("get_weather"),
+                JsonValue.Object.EMPTY,
+                JsonValue.Array(listOf(JsonValue.Number("3"), text("get_weather"), JsonValue.Null)),
+                JsonValue.Array(listOf(JsonValue.Object.EMPTY)),
+                JsonValue.Array(listOf(obj("function" to JsonValue.Null))),
+                JsonValue.Array(listOf(obj("function" to text("get_weather")))),
+            )
+
+        shapes.forEach { shape -> assertEquals(0L, toolCallCharacters(obj("tool_calls" to shape))) { "$shape" } }
+    }
+
+    @Test
+    fun `no tool_calls member counts 0`() {
+        assertEquals(0L, toolCallCharacters(JsonValue.Object.EMPTY))
+    }
+
+    private fun toolReply(
+        content: String?,
+        vararg calls: JsonValue,
+    ): ChatCompletion =
+        ChatCompletion(
+            "id",
+            1,
+            ModelName("m"),
+            listOf(ChatChoice(0, AssistantMessage(content, toolCalls(*calls)), FinishReason("tool_calls"))),
+        )
+
+    private fun toolCalls(vararg calls: JsonValue): JsonValue.Object =
+        obj("tool_calls" to JsonValue.Array(calls.toList()))
+
+    private fun call(
+        name: String,
+        arguments: String,
+    ): JsonValue.Object = obj("function" to obj("name" to text(name), "arguments" to text(arguments)))
+
+    private fun obj(vararg members: Pair<String, JsonValue>): JsonValue.Object = JsonValue.Object(mapOf(*members))
+
+    private fun text(value: String): JsonValue = JsonValue.Text(value)
+
     private fun request(content: MessageContent?): ChatRequest =
         ChatRequest(ModelName("m"), listOf(ChatMessage(Role("user"), content)))
 
     private fun completion(text: String): ChatCompletion =
         ChatCompletion("id", 1, ModelName("m"), listOf(ChatChoice(0, AssistantMessage(text), FinishReason("stop"))))
+
+    private companion object {
+        val WEATHER =
+            JsonValue.Object(
+                mapOf(
+                    "id" to JsonValue.Text("call_1"),
+                    "type" to JsonValue.Text("function"),
+                    "function" to
+                        JsonValue.Object(
+                            mapOf(
+                                "name" to JsonValue.Text("get_weather"),
+                                "arguments" to JsonValue.Text("""{"city":"Paris"}"""),
+                            ),
+                        ),
+                ),
+            )
+    }
 }

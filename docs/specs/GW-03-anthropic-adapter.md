@@ -4,7 +4,7 @@ title: Anthropic adapter: messages, tool calls and stream translation
 status: done   # not-started | in-progress | done | blocked | skipped
 needs: [GW-02]
 owner: —
-updated: 2026-11-04
+updated: 2026-11-05
 references:
   - https://platform.claude.com/docs/en/api/messages/create
   - https://platform.claude.com/docs/en/api/versioning
@@ -170,8 +170,11 @@ The policy is data (`AnthropicMemberPolicy`, ADR-GW-03-005), and any member set 
 | `logprobs` | Ignore `false`; else reject | `unsupported_value` |
 | `frequency_penalty`, `presence_penalty` | Ignore `0`; else reject | `unsupported_value`, numeric comparison so `0.0` passes |
 | `modalities` | Ignore `["text"]`; else reject | `unsupported_value` |
-| `top_logprobs`, `seed`, `logit_bias`, `response_format`, `audio`, `prediction`, `moderation`, `reasoning_effort`, `verbosity`, `web_search_options`, `functions`, `function_call` | Reject | `unsupported_parameter`. `response_format` until GW-06. |
+| `response_format` | Translate | `json_schema` as `output_config.format`, `text` ignored, other forms a 400: [GW-06](GW-06-tools-and-response-format.md) section 4 |
+| `top_logprobs`, `seed`, `logit_bias`, `audio`, `prediction`, `moderation`, `reasoning_effort`, `verbosity`, `web_search_options`, `functions`, `function_call` | Reject | `unsupported_parameter` |
 | anything else, `thinking` and `output_config` included | Reject | `unsupported_parameter` |
+
+**Revision (2026-11-05):** `response_format` left the Reject row, where it stood in every form until GW-06, and is Translate (ADR-GW-06-002). A client's own `output_config` stays a reject.
 
 `param` is the member path, passed only if it matches GW-01's `^[A-Za-z0-9_.\[\]-]{1,128}$`, otherwise `null`: an unknown member's name comes from the client.
 
@@ -676,6 +679,7 @@ Cross-cutting: [ADR-020](../DECISIONS.md#adr-020). Decisions 001 to 009 were tak
 - **Decision:** U3, D2, K2, table, `UnsupportedByProvider`. Row by row in section 4. `n` above 1, `logprobs`, `response_format`, penalties above 0 and `seed` are rejected. `response_format` is rejected in every form until GW-06, `{"type":"text"}` included, so GW-06 starts from one rule.
 - **Consequences:** Stricter than Portkey and equal to LiteLLM's default, with no `drop_params` switch; adding one per team is a small later change. A new OpenAI member is a 400 here until it gets a row: visible, not silent. Buys: no silent change of meaning, and no paid call for a request that cannot pass.
 - **Date:** 2026-11-04
+- **Revision (2026-11-05):** GW-06 decided `response_format`: `json_schema` is translated, `text` ignored, `json_object` a 400 (ADR-GW-06-002).
 
 ### ADR-GW-03-006: `max_tokens`
 - **Context:** Required by Anthropic; optional on OpenAI. `max_tokens` is deprecated by OpenAI in favour of `max_completion_tokens`, and clients send either.
@@ -807,6 +811,7 @@ Cross-cutting: [ADR-020](../DECISIONS.md#adr-020). Decisions 001 to 009 were tak
 - **Decision:** C, recorded as a [Revision of ADR-018](../DECISIONS.md#adr-018) and of the pattern.
 - **Consequences:** `ChatRequestReader`, `OpenAiRequestWriter` (but for `llmgw`), CACHE-01's key and every OpenAI suite are untouched. The adapter knows OpenAI's shape, which is what translating to it means. Buys: a small blast radius, and core staying domain-only.
 - **Date:** 2026-11-04
+- **Revision (2026-11-05):** "Promote when core itself needs a member" now excludes a member core only measures. `UsageEstimator` and `StreamTally` count the characters of `tool_calls` in `extras` and never branch on the value, so nothing is promoted (GW-06, ADR-GW-06-003). RL-02 reading `max_tokens` would still be the first promotion.
 
 ### ADR-GW-03-018: Extraction to `.gateway.providers.upstream`
 - **Context:** Much of `.openai` is provider-neutral. Copying it would duplicate the code where GW-01 and GW-02 paid for their bugs: transport classification, buffer release and the terminal-event race.

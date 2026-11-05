@@ -1,6 +1,7 @@
 package io.github.pdroacordi.llmgateway.gateway.core.chat
 
 import io.github.pdroacordi.llmgateway.gateway.core.error.ProviderFailure
+import io.github.pdroacordi.llmgateway.gateway.core.json.JsonValue
 import io.github.pdroacordi.llmgateway.gateway.core.request.RequestId
 import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import kotlinx.coroutines.CancellationException
@@ -69,6 +70,17 @@ class ChatCompletionServiceTest {
         }
 
     @Test
+    fun `a tool-only reply with omitted usage is estimated above 0 and flagged`() =
+        runTest {
+            val port = RecordingPort { ProviderResult.Completed(TOOL_COMPLETION, null) }
+
+            val outcome = service(port).complete(REQUEST_ID, TestKeys.TEAM_ID, REQUEST) as ChatOutcome.Answered
+
+            assertTrue(outcome.usage.estimated)
+            assertEquals(TokenCount(7), outcome.usage.outputTokens)
+        }
+
+    @Test
     fun `a failure comes back as Rejected with the same value`() =
         runTest {
             val failure = ProviderFailure.RejectedByProvider(400, "bad_thing", "seed")
@@ -109,6 +121,16 @@ class ChatCompletionServiceTest {
                 ModelName("mock-chat"),
                 listOf(ChatChoice(0, AssistantMessage("Hi there"), FinishReason("stop"))),
             )
+        val FUNCTION =
+            JsonValue.Object(
+                mapOf(
+                    "name" to JsonValue.Text("get_weather"),
+                    "arguments" to JsonValue.Text("""{"city":"Paris"}"""),
+                ),
+            )
+        val TOOL_CALLS = JsonValue.Array(listOf(JsonValue.Object(mapOf("function" to FUNCTION))))
+        val TOOL_MESSAGE = AssistantMessage(null, JsonValue.Object(mapOf("tool_calls" to TOOL_CALLS)))
+        val TOOL_COMPLETION = COMPLETION.copy(choices = listOf(ChatChoice(0, TOOL_MESSAGE, FinishReason("tool_calls"))))
         val PROVIDER_USAGE = Usage(TokenCount(14), TokenCount(2), TokenCount(0))
     }
 }

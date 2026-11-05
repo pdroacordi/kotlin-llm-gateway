@@ -57,6 +57,7 @@ internal class AnthropicRequestWriter(
         conversation.system?.let { body.set("system", it) }
         body.set("messages", conversation.messages)
         AnthropicToolWriter(nodes, refusals).write(extras, body)
+        AnthropicResponseFormatWriter(nodes, refusals).write(extras, body)
         stopSequences(extras["stop"], refusals)?.let { body.set("stop_sequences", it.toJsonNode(nodes)) }
         FORWARDED.forEach { name -> extras[name]?.let { body.set(name, it.toJsonNode(nodes)) } }
         userId(extras, refusals)?.let { body.putObject("metadata").put("user_id", it) }

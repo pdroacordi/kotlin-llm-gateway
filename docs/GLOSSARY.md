@@ -16,7 +16,7 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 | Circuit breaker | Per-deployment switch that stops sending traffic after repeated failures and probes before closing again. | `DeploymentHealth` |
 | Client request ID | A client's own correlation ID, sent in `x-client-request-id` (1 to 512 printable ASCII characters), echoed and logged; never used as the request ID. | `ClientRequestId` |
 | Commit point | The first frame of a stream: the last moment a status or header can change. | `ChatStreamEvent.Started` |
-| Conversation check | The mock provider's rule that a user message right after an assistant `tool_use` starts with `tool_result` blocks covering every `tool_use` ID, else a 400, so a wrongly translated conversation fails a test. | `AnthropicRequests` |
+| Conversation check | The mock provider's rules that make a wrongly passed conversation fail a test with a 400. On Anthropic a user message right after an assistant `tool_use` starts with `tool_result` blocks covering every `tool_use` ID; on OpenAI a `tool` message answers an ID of the preceding `tool_calls`. | `AnthropicRequests`, `OpenAiRequests` |
 | CPU lane | The bounded scheduler for CPU work that grows with a body, off the event loops: parse, typing, upstream write, reply copy, scan, error read. Refuses a request's parse past `cpu-threads` plus `cpu-queue-size`; later stages are bounded by the in-flight budget. | `CpuLane`, `EmbeddingCpuPort` |
 | Deployment | A concrete target a route can use: provider, provider model name, endpoint, credentials reference. | `Deployment` |
 | Embedding call | One provider call for embeddings with its request ID, team, deployment and input. | `EmbeddingCall` |
@@ -54,6 +54,7 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 | Reply hold | What holds a call's reservations from the handler to the end of the write, so each is released once on every path. | `ReplyHold` |
 | Reply pacer | Holds each slice of a reply until the channel is writable, since a send runs ahead of an unwritable channel. | `ReplyWritePacer` |
 | Reservation | Tokens held against a team's limit before a call and reconciled with real usage after it. | `TokenReservation` |
+| Response format | A client's `response_format`. Forwarded as sent on OpenAI. On Anthropic `json_schema` becomes `output_config.format`, `text` is ignored, and any other form is a 400. | `AnthropicResponseFormatWriter` |
 | Route table | A team's mapping from model aliases to deployments and the routing policy. | `RouteTable` |
 | Run | One execution of an agent version on an input. | `Run` |
 | Scenario | Per-model behaviour of the mock provider: ordered steps (each consumed by `times` requests) and then an `otherwise` behaviour (latency, error, fault, content, usage), set over `/__mock/scenarios`; `*` serves every model without its own. | `Scenario`, `Behaviour` |
@@ -71,6 +72,7 @@ Domain terms, alphabetical, with the code identifier each maps to. Identifiers a
 | Team store | The port for teams and keys: Postgres behind a Caffeine cache, the source of truth for who may call. | `TeamStorePort`, `PostgresTeamStore`, `CachingTeamStore` |
 | Thinking block | A provider reasoning block with an opaque signature, never put in `content`. A reply carries it in `llmgw.thinking_blocks`; a client echoes it on the assistant message in a tool loop. | `HeldThinking` |
 | Tool | A registered HTTP capability an agent can call, described by a JSON schema, on an allowlisted host. | `ToolDefinition` |
+| Tool call characters | The characters of `function.name` and `function.arguments` in a `tool_calls` member, read from `extras` and counted as output in a usage estimate. | `toolCallCharacters` |
 | TTFT | Time to first token: from request receipt to the first streamed chunk sent. | `ttftMs` in the end-of-stream line, until OBS-02's `ttft` metric |
 | Usage | Provider-reported token counts (input, output, cached input), or an estimate flagged as such; `estimated` when the provider omitted it. | `Usage` |
 | Usage event | The message emitted once per call with team, model, usage and cost, keyed by request ID. | `UsageEvent` |

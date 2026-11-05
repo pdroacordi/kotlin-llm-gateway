@@ -467,6 +467,9 @@ Full options and reasoning in [GW-01](specs/GW-01-chat-completions.md), ADR-GW-0
 ### Revision (2026-11-04)
 "Tree model only" has one exception: a large value the gateway only carries. An embeddings reply is read with Jackson's streaming API inside `gateway-providers`, and each vector is held as raw bytes (`RawJson` in core), neither a tree nor a `JsonValue`. Requests and every other reply stay on the tree. Reason: 6.3 million floats in one valid reply are over 1 GiB as trees, by estimate, and a tree rewrites literals. Core still knows no JSON library. Options and reasoning in [GW-05](specs/GW-05-embeddings.md), ADR-GW-05-005.
 
+### Revision (2026-11-05)
+Core may measure a member in `extras` without promoting it, if it never branches on the value. `UsageEstimator` and `StreamTally` count the characters of `tool_calls` there. Reason: promotion would put tool types in core and rework both adapters' readers and writers for a count used only when a provider omits usage. A member core or the app acts on is still promoted. Options and reasoning in [GW-06](specs/GW-06-tools-and-response-format.md), ADR-GW-06-003.
+
 ---
 
 <a id="adr-019"></a>

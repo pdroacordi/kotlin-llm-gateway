@@ -49,7 +49,7 @@ class AnthropicChatEndToEndTest : AnthropicBackedTest() {
         delimiter = '|',
         value = [
             """"seed":1 | unsupported_parameter | seed""",
-            """"response_format":{"type":"text"} | unsupported_parameter | response_format""",
+            """"response_format":{"type":"json_object"} | unsupported_value | response_format.type""",
             """"thinking":{"type":"disabled"} | unsupported_parameter | thinking""",
             """"n":2 | unsupported_value | n""",
             """"logprobs":true | unsupported_value | logprobs""",

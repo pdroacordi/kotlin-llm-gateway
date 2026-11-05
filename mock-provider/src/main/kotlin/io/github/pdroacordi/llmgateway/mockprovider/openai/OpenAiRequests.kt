@@ -37,7 +37,8 @@ data class EmbeddingLimits(
 
 /**
  * Reads the members of OpenAI requests the mock uses; everything else, `tools` and images included, is ignored
- * (FND-03 section 4). Validation failures are 400 `invalid_request_error` naming the member.
+ * (FND-03 section 4). Validation failures are 400 `invalid_request_error` naming the member. A `tool` message is
+ * checked against the `tool_calls` before it, so a badly passed conversation fails (ADR-GW-06-005).
  */
 object OpenAiRequests {
     private val NON_NEGATIVE = 0..Int.MAX_VALUE
@@ -54,9 +55,11 @@ object OpenAiRequests {
         val caps =
             listOfNotNull(body.optInt("max_completion_tokens", NON_NEGATIVE), body.optInt("max_tokens", NON_NEGATIVE))
         val streamOptions = body.member("stream_options")
+        val turns = messages.mapIndexed(::turn)
+        checkToolMessages(messages)
         return ChatRequest(
             model = model,
-            conversation = Conversation(model, messages.mapIndexed(::turn)),
+            conversation = Conversation(model, turns),
             stream = body.optBoolean("stream") ?: false,
             includeUsage = streamOptions?.optBoolean("include_usage", "stream_options.include_usage") ?: false,
             cap = caps.minOrNull(),
@@ -76,6 +79,30 @@ object OpenAiRequests {
         if (format != FLOAT && format != BASE64) reject("encoding_format", "'encoding_format' must be float or base64.")
         return EmbeddingsRequest(model, inputs, dimensions, format == BASE64)
     }
+
+    // The cookbook states this direction only, so a call left unanswered passes (ADR-GW-06-005).
+    private fun checkToolMessages(messages: List<JsonNode>) {
+        var asked = emptySet<String>()
+        messages.forEachIndexed { index, message ->
+            if (message.requireString("role") == TOOL) {
+                val id = message.member("tool_call_id")?.takeIf { it.isString }?.stringValue()
+                if (id !in asked) {
+                    reject("messages[$index]", "'messages[$index]' must answer a call of the preceding 'tool_calls'.")
+                }
+            } else {
+                asked = toolCallIds(message)
+            }
+        }
+    }
+
+    private fun toolCallIds(message: JsonNode): Set<String> =
+        message
+            .member("tool_calls")
+            ?.takeIf { it.isArray }
+            ?.values()
+            ?.mapNotNull { call -> call.member("id")?.takeIf { it.isString }?.stringValue() }
+            .orEmpty()
+            .toSet()
 
     private fun turn(
         index: Int,
@@ -144,6 +171,7 @@ object OpenAiRequests {
 
     // OpenAI's documented limit per request; also bounds the vectors one request makes.
     private const val MAX_EMBEDDING_INPUTS = 2048
+    private const val TOOL = "tool"
     private const val FLOAT = "float"
     private const val BASE64 = "base64"
 }

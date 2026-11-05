@@ -28,7 +28,7 @@ class AnthropicMemberPolicyTest {
     @ValueSource(
         strings = [
             "model", "messages", "stream", "max_completion_tokens", "max_tokens", "stop", "tools", "tool_choice",
-            "parallel_tool_calls", "safety_identifier", "user",
+            "parallel_tool_calls", "safety_identifier", "user", "response_format",
         ],
     )
     fun `the writer owns these`(member: String) {
@@ -99,9 +99,8 @@ class AnthropicMemberPolicyTest {
     @ParameterizedTest
     @ValueSource(
         strings = [
-            "top_logprobs", "seed", "logit_bias", "response_format", "audio", "prediction", "moderation",
-            "reasoning_effort", "verbosity", "web_search_options", "functions", "function_call", "thinking",
-            "output_config", "something_new",
+            "top_logprobs", "seed", "logit_bias", "audio", "prediction", "moderation", "reasoning_effort", "verbosity",
+            "web_search_options", "functions", "function_call", "thinking", "output_config", "something_new",
         ],
     )
     fun `these and anything unlisted are unsupported_parameter`(member: String) {

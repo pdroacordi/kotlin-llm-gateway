@@ -156,7 +156,7 @@ while read -r member code; do
     check_has "4 $member code" "$BODY" "\"code\":\"$code\""
 done <<'ROWS'
 "seed":1 unsupported_parameter
-"response_format":{"type":"text"} unsupported_parameter
+"response_format":{"type":"json_object"} unsupported_value
 "n":2 unsupported_value
 "logprobs":true unsupported_value
 "stop":7 unsupported_value
@@ -166,7 +166,56 @@ post "$(body ",\"parallel_tool_calls\":\"x\",$TOOLS")"
 check "4 parallel_tool_calls not a boolean status" "$STATUS" 400
 check_has "4 parallel_tool_calls not a boolean code" "$BODY" '"code":"unsupported_value"'
 check_has "4 parallel_tool_calls not a boolean param" "$BODY" '"param":"parallel_tool_calls"'
+post "$(body ',"response_format":{"type":"json_object"}')"
+check_has "4 json_object param" "$BODY" '"param":"response_format.type"'
+while read -r format code param; do
+    post "$(body ",\"response_format\":$format")"
+    check "4 $format status" "$STATUS" 400
+    check_has "4 $format code" "$BODY" "\"code\":\"$code\""
+    check_has "4 $format param" "$BODY" "\"param\":\"$param\""
+done <<'ROWS'
+{"type":"json_schema"} invalid_request response_format.json_schema
+{"type":"json_schema","json_schema":{"name":"n"}} invalid_request response_format.json_schema.schema
+{"type":"xml"} unsupported_value response_format.type
+"text" unsupported_value response_format
+{"type":"text","extra":1} unsupported_parameter response_format.extra
+ROWS
+post "$(body ',"output_config":{"format":{"type":"json_schema","schema":{}}}')"
+check "4 client output_config status" "$STATUS" 400
+check_has "4 client output_config code" "$BODY" '"code":"unsupported_parameter"'
 check_same "4 no upstream call" "$(last_seq)" "$BEFORE"
+
+# 4b. response_format that goes through, on both forms: json_schema as output_config, text as nothing.
+reset_mock
+SCHEMA='{"type":"object","properties":{"city":{"type":"string"}},"additionalProperties":false}'
+FORMAT="\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"r\",\"description\":\"d\",\"strict\":true,\"schema\":$SCHEMA}}"
+ESCAPED=$(printf '%s' "$SCHEMA" | sed 's/"/\\"/g')
+for extra in "" ',"stream":true'; do
+    post "$(body ",$FORMAT$extra")"
+    check "4b json_schema$extra status" "$STATUS" 200
+    journal "$(header x-request-id)" >"$TMP/entry"
+    check_has "4b json_schema$extra output_config" "$TMP/entry" \
+        "\\\"output_config\\\":{\\\"format\\\":{\\\"type\\\":\\\"json_schema\\\",\\\"schema\\\":$ESCAPED}}"
+    check_lacks "4b json_schema$extra no strict upstream" "$TMP/entry" 'strict'
+    check_lacks "4b json_schema$extra no name upstream" "$TMP/entry" '\"name\"'
+    check_lacks "4b json_schema$extra no description upstream" "$TMP/entry" '\"description\"'
+    post "$(body ",\"response_format\":{\"type\":\"text\"}$extra")"
+    check "4b text$extra status" "$STATUS" 200
+    journal "$(header x-request-id)" >"$TMP/entry"
+    # An unmatched journal read is {"data":[]}: not empty, so check_lacks alone would pass on it.
+    check_has "4b text$extra reached the mock" "$TMP/entry" '"route":"anthropic.messages"'
+    check_lacks "4b text$extra no output_config" "$TMP/entry" 'output_config'
+done
+
+# 4c. A tool-only reply with usage omitted: name and arguments, 27 characters, 7 tokens, on both forms.
+reset_mock
+scenario "{\"otherwise\":{\"usage\":{\"omit\":true},\"content\":{\"mode\":\"fixed\",\"text\":\"\",\"toolCalls\":[$CALL]}}}"
+post "$(body)"
+check "4c estimated header" "$(header x-gateway-usage-estimated)" true
+check_has "4c completion_tokens" "$BODY" '"completion_tokens":7,'
+post "$(body ',"stream":true,"stream_options":{"include_usage":true}')"
+check_has "4c stream completion_tokens" "$BODY" '"completion_tokens":7,'
+check_has "4c stream flag" "$BODY" '"usage_estimated":true'
 
 # 5. The status table: a stream fails the same way before its first frame.
 while read -r injected status code; do
@@ -200,6 +249,7 @@ ROWS
 reset_mock
 scenario '{"otherwise":{"error":{"status":429}}}'
 post "$(body)"
+check "5 429 status" "$STATUS" 429
 check "5 429 no retry-after" "$(header retry-after)" ""
 scenario '{"otherwise":{"error":{"status":429,"retryAfterSeconds":7}}}'
 post "$(body)"

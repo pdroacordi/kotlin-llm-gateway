@@ -83,6 +83,7 @@ class ChatCompletionsEndToEndTest(
         val requestId =
             answered(
                 """{"model":"mock-chat","messages":[{"role":"user","content":"Hi"},""" +
+                    """{"role":"assistant","tool_calls":[{"id":"c1"}]},""" +
                     """{"role":"tool","tool_call_id":"c1"}],"x_big":1e5,"x_zero":-0.0}""",
             ).requestId()
 

@@ -120,6 +120,73 @@ check_has "4 unknown member" "$TMP/journal" '\"x_future\":{\"a\":[1,null]}'
 check_has "4 big integer" "$TMP/journal" '\"seed\":9007199254740993'
 check_has "4 float" "$TMP/journal" '\"temperature\":0.7'
 
+# 4b. Tools and response_format pass through, on both forms (GW-06 section 8).
+TOOLS='"tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object"}}}],"tool_choice":"auto","parallel_tool_calls":false'
+CALL='{"id":"call_1","name":"get_weather","input":{"city":"Paris"},"chunkChars":3}'
+SECOND_CALL='{"id":"call_2","name":"get_time","input":{"zone":"CET"},"chunkChars":3}'
+SUNNY='{"content":{"mode":"fixed","text":"Sunny.","toolCalls":[]}}'
+ASSISTANT='{"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"Paris\"}"}}]}'
+RESULT='{"role":"tool","content":"18C","tool_call_id":"call_1"}'
+USER='{"role":"user","content":"Hi"}'
+for form in complete stream; do
+    if [ "$form" = complete ]; then extra=""; else extra=',"stream":true'; fi
+    scenario smoke-tools "{\"steps\":[{\"content\":{\"mode\":\"fixed\",\"text\":\"\",\"toolCalls\":[$CALL]}}],\"otherwise\":$SUNNY}"
+    post "{\"model\":\"smoke-tools\",$TOOLS$extra,\"messages\":[$USER]}"
+    check "4b $form tools status" "$STATUS" 200
+    check_has "4b $form finish" "$BODY" '"finish_reason":"tool_calls"'
+    check_has "4b $form call id" "$BODY" '"id":"call_1"'
+    journal "$(header x-request-id)" >"$TMP/journal"
+    check_has "4b $form tools upstream" "$TMP/journal" '\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"get_weather\"'
+    check_has "4b $form tool_choice upstream" "$TMP/journal" '\"tool_choice\":\"auto\"'
+    check_has "4b $form parallel_tool_calls upstream" "$TMP/journal" '\"parallel_tool_calls\":false'
+    post "{\"model\":\"smoke-tools\",$TOOLS$extra,\"messages\":[$USER,$ASSISTANT,$RESULT]}"
+    check "4b $form second turn status" "$STATUS" 200
+    journal "$(header x-request-id)" >"$TMP/journal"
+    check_has "4b $form echoed call upstream" "$TMP/journal" '\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\"'
+    check_has "4b $form tool message upstream" "$TMP/journal" '\"tool_call_id\":\"call_1\"'
+done
+post "{\"model\":\"smoke-tools\",\"messages\":[$USER,$ASSISTANT,{\"role\":\"tool\",\"content\":\"x\",\"tool_call_id\":\"other\"}]}"
+check "4b unknown tool_call_id status" "$STATUS" 400
+check_has "4b unknown tool_call_id param" "$BODY" '"param":"messages[2]"'
+
+# 4c. Parallel calls, arguments split across chunks: each call in more than one delta, and whole when joined by index.
+scenario smoke-parallel "{\"otherwise\":{\"content\":{\"mode\":\"fixed\",\"text\":\"\",\"toolCalls\":[$CALL,$SECOND_CALL]}}}"
+post '{"model":"smoke-parallel","stream":true,"messages":[{"role":"user","content":"Hi"}]}'
+check_has "4c first call" "$BODY" '"tool_calls":[{"index":0,'
+check_has "4c second call" "$BODY" '"tool_calls":[{"index":1,'
+# The non-empty argument fragments of the call at index $1, one per line, still JSON-escaped.
+fragments() { sed -n "s/.*\"tool_calls\":\[{\"index\":$1,.*\"arguments\":\"\(..*\)\"}}\]}.*/\1/p" "$BODY"; }
+for row in '0 {\"city\":\"Paris\"}' '1 {\"zone\":\"CET\"}'; do
+    index=${row%% *}
+    if [ "$(fragments "$index" | wc -l)" -gt 1 ]; then
+        pass "4c call $index arguments split"
+    else
+        fail "4c call $index arguments split" "$(cut -c1-300 "$BODY")"
+    fi
+    check "4c call $index arguments joined" "$(fragments "$index" | tr -d '\r\n')" "${row#* }"
+done
+
+# 4d. response_format forms reach the provider as sent.
+while read -r format; do
+    escaped=$(printf '%s' "$format" | sed 's/"/\\"/g')
+    for extra in "" ',"stream":true'; do
+        post "{\"model\":\"mock-chat\",\"response_format\":$format$extra,\"messages\":[$USER]}"
+        check "4d $format$extra status" "$STATUS" 200
+        journal "$(header x-request-id)" >"$TMP/journal"
+        check_has "4d $format$extra upstream" "$TMP/journal" "\\\"response_format\\\":$escaped"
+    done
+done <<'ROWS'
+{"type":"text"}
+{"type":"json_object"}
+{"type":"json_schema","json_schema":{"name":"r","strict":true,"schema":{"type":"object","additionalProperties":false}}}
+ROWS
+scenario smoke-format '{"otherwise":{"error":{"status":400,"code":"invalid_json_schema","param":"response_format.json_schema.schema"}}}'
+post '{"model":"smoke-format","response_format":{"type":"json_schema"},"messages":[{"role":"user","content":"Hi"}]}'
+check "4d provider 400 status" "$STATUS" 400
+check_has "4d provider 400 message" "$BODY" 'The provider rejected the request; see the code and param members.'
+check_has "4d provider 400 code" "$BODY" '"code":"invalid_json_schema"'
+check_has "4d provider 400 param" "$BODY" '"param":"response_format.json_schema.schema"'
+
 # 5. Mapped errors: name, injected error, status, code.
 while read -r name error status code; do
     scenario "smoke-$name" "{\"otherwise\":{\"error\":$error}}"
@@ -166,7 +233,16 @@ check "8 status" "$STATUS" 200
 check "8 estimated header" "$(header x-gateway-usage-estimated)" true
 check_has "8 usage present" "$BODY" '"usage":{"prompt_tokens":'
 post "$(minimal mock-chat)"
+check "8 provider usage status" "$STATUS" 200
 check "8 no header with provider usage" "$(header x-gateway-usage-estimated)" ""
+# get_weather and {"city":"Paris"}: 27 characters, 7 tokens, on both forms.
+scenario smoke-omit-tool "{\"otherwise\":{\"usage\":{\"omit\":true},\"content\":{\"mode\":\"fixed\",\"text\":\"\",\"toolCalls\":[$CALL]}}}"
+post "$(minimal smoke-omit-tool)"
+check "8 tool-only estimated header" "$(header x-gateway-usage-estimated)" true
+check_has "8 tool-only completion_tokens" "$BODY" '"completion_tokens":7,'
+post '{"model":"smoke-omit-tool","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"Hi"}]}'
+check_has "8 tool-only stream completion_tokens" "$BODY" '"completion_tokens":7,'
+check_has "8 tool-only stream flag" "$BODY" '"usage_estimated":true'
 
 # 9. No leak.
 scenario smoke-leak '{"otherwise":{"error":{"status":429,"message":"canary-provider-message org-canary"}}}'

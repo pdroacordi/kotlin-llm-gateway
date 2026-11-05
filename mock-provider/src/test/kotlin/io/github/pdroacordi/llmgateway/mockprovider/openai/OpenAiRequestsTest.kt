@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import org.junit.jupiter.params.provider.ValueSource
 import tools.jackson.databind.json.JsonMapper
 
 class OpenAiRequestsTest {
@@ -26,7 +27,8 @@ class OpenAiRequestsTest {
                      "max_completion_tokens":5,"temperature":0.3,"tools":[{"type":"function"}],
                      "messages":[{"role":"system","content":"s"},{"role":"user","content":[{"type":"text","text":"a"},
                      {"type":"image_url","image_url":{"url":"x"}},{"type":"text","text":"b"}]},
-                     {"role":"assistant","content":null,"tool_calls":[{"id":"c"}]},{"role":"tool","content":"r"}]}
+                     {"role":"assistant","content":null,"tool_calls":[{"id":"c"}]},
+                     {"role":"tool","tool_call_id":"c","content":"r"}]}
                     """,
                 ),
             )
@@ -80,6 +82,49 @@ class OpenAiRequestsTest {
         assertEquals(400, rejection.status)
         assertEquals(param, rejection.param)
         assertEquals(code, rejection.code)
+    }
+
+    @ParameterizedTest(name = "{0} -> param {1}")
+    @CsvSource(
+        delimiter = '|',
+        value = [
+            """[$USER,$ASKED,{"role":"tool","tool_call_id":"other","content":"r"}]|messages[2]""",
+            """[$USER,$ASKED,{"role":"tool","content":"r"}]|messages[2]""",
+            """[$USER,$ASKED,{"role":"tool","tool_call_id":null,"content":"r"}]|messages[2]""",
+            """[$USER,$ASKED,{"role":"tool","tool_call_id":7,"content":"r"}]|messages[2]""",
+            """[$USER,{"role":"tool","tool_call_id":"a","content":"r"}]|messages[1]""",
+            """[{"role":"tool","tool_call_id":"a","content":"r"}]|messages[0]""",
+            """[$USER,$ASKED,$ANSWER_A,{"role":"tool","tool_call_id":"z","content":"r"}]|messages[3]""",
+            """[$USER,$ASKED,$ANSWER_A,$USER,$ANSWER_B]|messages[4]""",
+            """[$USER,$ASKED,$USER,$ANSWER_A]|messages[3]""",
+        ],
+    )
+    fun `a tool message answering no call of the preceding tool_calls is 400 naming it`(
+        messages: String,
+        param: String,
+    ) {
+        val rejection =
+            assertThrows<MockRejection> { OpenAiRequests.chat(tree("""{"model":"m","messages":$messages}""")) }
+
+        assertEquals(400, rejection.status)
+        assertEquals(param, rejection.param)
+        assertTrue(param in rejection.message.orEmpty()) { rejection.message }
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+        strings = [
+            """[$USER,$ASKED,$ANSWER_A]""",
+            """[$USER,$ASKED,$ANSWER_A,$ANSWER_B]""",
+            """[$USER,$ASKED,$ANSWER_B,$ANSWER_A,$USER]""",
+            """[$USER,$ASKED]""",
+            """[$USER,{"role":"assistant","content":"Hi"},$USER]""",
+        ],
+    )
+    fun `a conversation that answers what was asked, or asks nothing, passes the check`(messages: String) {
+        val chat = OpenAiRequests.chat(tree("""{"model":"m","messages":$messages}"""))
+
+        assertEquals("m", chat.model)
     }
 
     @Test
@@ -164,6 +209,10 @@ class OpenAiRequestsTest {
     private fun tree(json: String) = mapper.readTree(json.trimIndent())
 
     private companion object {
+        const val USER = """{"role":"user","content":"x"}"""
+        const val ASKED = """{"role":"assistant","content":null,"tool_calls":[{"id":"a"},{"id":"b"}]}"""
+        const val ANSWER_A = """{"role":"tool","tool_call_id":"a","content":"r"}"""
+        const val ANSWER_B = """{"role":"tool","tool_call_id":"b","content":"r"}"""
         val LIMITS = EmbeddingLimits(defaultDimensions = 1536, maxDimensions = 3072)
     }
 }

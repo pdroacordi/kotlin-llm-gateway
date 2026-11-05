@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import tools.jackson.databind.JsonNode
 
 class AnthropicToolConversationIntegrationTest : AnthropicBackedTest() {
@@ -153,6 +155,29 @@ class AnthropicToolConversationIntegrationTest : AnthropicBackedTest() {
         assertEquals("get_weather", sent.at("/tools/0/name").stringValue())
         assertEquals("object", sent.at("/tools/0/input_schema/type").stringValue())
         assertNull(sent.at("/tools/0").get("function"))
+    }
+
+    @ParameterizedTest
+    @CsvSource("'', 7", "abc, 8")
+    fun `with usage omitted a tool reply is estimated from its name and arguments, on both forms`(
+        text: String,
+        tokens: Int,
+    ) {
+        claudeScenario(
+            """{"otherwise":{"usage":{"omit":true},"content":{"mode":"fixed","text":"$text","toolCalls":[$PARIS]}}}""",
+        )
+
+        val complete = chat(CLAUDE_MINIMAL).result()
+        val last =
+            rawStream(CLAUDE_STREAM.dropLast(1) + ""","stream_options":{"include_usage":true}}""").chunks().last()
+
+        assertEquals("true", complete.responseHeaders.getFirst("x-gateway-usage-estimated"))
+        assertEquals(
+            tokens,
+            mapper.readTree(checkNotNull(complete.responseBody)).at("/usage/completion_tokens").intValue(),
+        )
+        assertTrue(last.at("/llmgw/usage_estimated").booleanValue()) { last.toString() }
+        assertEquals(tokens, last.at("/usage/completion_tokens").intValue())
     }
 
     private companion object {

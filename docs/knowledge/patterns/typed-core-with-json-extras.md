@@ -6,7 +6,7 @@ status: active
 tags: [openai-compat, domain-model, json, hexagonal, pass-through]
 related: [patterns/upstream-bytes-then-pure-classification, patterns/member-policy-table-for-a-foreign-provider, systems/provider-adapters]
 created: 2026-11-03
-updated: 2026-11-04
+updated: 2026-11-05
 source_files:
   - gateway-core/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/core/json/JsonValue.kt
   - gateway-core/src/main/kotlin/io/github/pdroacordi/llmgateway/gateway/core/chat/ChatRequest.kt
@@ -46,3 +46,7 @@ Add a member to the typed part only when the gateway reads it. "It might be usef
 ## Revision (2026-11-04)
 
 Promotion happens when `gateway-core` or the app must read a member. An adapter that translates a member reads it from `extras`, which hold the gateway API's members in the OpenAI shape, and states what it does with it ([patterns/member-policy-table-for-a-foreign-provider](member-policy-table-for-a-foreign-provider.md)). Reason: a promoted member has three states (typed, `null`, wrong type left in `extras`), and every other adapter must re-emit it. Decided in GW-03, ADR-GW-03-017; [ADR-018](../../DECISIONS.md#adr-018) carries the same Revision.
+
+## Revision (2026-11-05)
+
+Core may measure a member in `extras` without promoting it, if it never branches on the value: `UsageEstimator` counts the characters of `tool_calls`. Promotion stays the rule for a member core or the app acts on. Decided in GW-06, ADR-GW-06-003; [ADR-018](../../DECISIONS.md#adr-018) carries the same Revision.

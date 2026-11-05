@@ -22,6 +22,10 @@ import org.springframework.test.context.TestPropertySource
 )
 class NoLeakIntegrationTest : MockBackedTest() {
     private val prompted = """{"model":"mock-chat","messages":[{"role":"user","content":"$PROMPT"}]}"""
+    private val structured =
+        """{"model":"mock-chat","messages":[{"role":"user","content":"$PROMPT"}],
+        "tools":[{"type":"function","function":{"name":"g","parameters":{"description":"$SCHEMA"}}}],
+        "response_format":{"type":"json_schema","json_schema":{"name":"r","schema":{"description":"$SCHEMA"}}}}"""
 
     private fun assertNoCanary(
         text: String,
@@ -86,6 +90,33 @@ class NoLeakIntegrationTest : MockBackedTest() {
     }
 
     @Test
+    fun `a schema, a tool definition and tool arguments stay out of the log, on both forms`(output: CapturedOutput) {
+        scenario(
+            """{"otherwise":{"content":{"mode":"fixed","text":"",
+            "toolCalls":[{"name":"g","input":{"x":"$TOOL_ARGUMENT"}}]}}}""",
+        )
+
+        val body =
+            chat(structured)
+                .expectStatus()
+                .isOk
+                .expectBody(ByteArray::class.java)
+                .returnResult()
+                .responseBody
+                ?.decodeToString()
+                .orEmpty()
+        val stream = rawStream(structured.dropLast(1) + ""","stream":true}""")
+
+        eventually { "Stream completed" in output.all }
+        assertEquals(200, stream.status) { stream.body }
+        assertTrue(TOOL_ARGUMENT in body) { body }
+        journal().forEach { assertTrue(SCHEMA in it.at("/body").stringValue()) { "the schema was not in play" } }
+        assertEquals(2, journal().size)
+        assertFalse(SCHEMA in output.all) { "the schema in the log" }
+        assertFalse(TOOL_ARGUMENT in output.all) { "the arguments in the log" }
+    }
+
+    @Test
     fun `an unreadable provider body stays out of the log`(output: CapturedOutput) {
         scenario("""{"otherwise":{"fault":{"kind":"malformed"}}}""")
 
@@ -108,6 +139,8 @@ class NoLeakIntegrationTest : MockBackedTest() {
         const val ORGANIZATION = "org-canary"
         const val PROMPT = "canary-prompt"
         const val COMPLETION = "canary-completion"
+        const val SCHEMA = "canary-schema"
+        const val TOOL_ARGUMENT = "canary-tool-argument"
     }
 }
 
@@ -197,6 +230,36 @@ class AnthropicNoLeakIntegrationTest : AnthropicBackedTest() {
     }
 
     @Test
+    fun `a schema stays out of the log, on both forms`(output: CapturedOutput) {
+        val request =
+            """{"model":"mock-claude","messages":[{"role":"user","content":"$PROMPT"}],
+            "response_format":{"type":"json_schema","json_schema":{"schema":{"description":"$SCHEMA"}}}}"""
+
+        val body = body(request)
+        val stream = rawStream(request.dropLast(1) + ""","stream":true}""")
+
+        eventually { "Stream completed" in output.all }
+        assertEquals(200, stream.status) { stream.body }
+        assertFalse(SCHEMA in body) { body }
+        journal().forEach { assertTrue(SCHEMA in it.at("/body").stringValue()) { "the schema was not in play" } }
+        assertEquals(2, journal().size)
+        assertFalse(SCHEMA in output.all) { "the schema in the log" }
+    }
+
+    @Test
+    fun `a refused schema stays out of the response and the log`(output: CapturedOutput) {
+        val request =
+            """{"model":"mock-claude","messages":[{"role":"user","content":"$PROMPT"}],
+            "response_format":{"type":"json_object","json_schema":{"schema":{"description":"$SCHEMA"}}}}"""
+
+        val body = body(request)
+
+        eventually { "Provider call refused" in output.all }
+        assertFalse(SCHEMA in body) { body }
+        assertFalse(SCHEMA in output.all) { "the schema in the log" }
+    }
+
+    @Test
     fun `a refused request keeps its value out of the log, and a hashed user out of both`(output: CapturedOutput) {
         val request =
             """{"model":"mock-claude","user":"$ARGUMENT","stop":7,"messages":[{"role":"user","content":"$PROMPT"}]}"""
@@ -214,5 +277,6 @@ class AnthropicNoLeakIntegrationTest : AnthropicBackedTest() {
         const val ARGUMENT = "canary-tool-argument"
         const val COMPLETION = "canary-completion"
         const val SIGNATURE = "canary-signature"
+        const val SCHEMA = "canary-schema"
     }
 }

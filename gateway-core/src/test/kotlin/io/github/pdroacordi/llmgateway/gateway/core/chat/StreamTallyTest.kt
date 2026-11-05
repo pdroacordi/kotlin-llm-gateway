@@ -22,6 +22,21 @@ class StreamTallyTest {
             ChatChunk(id, CREATED, MODEL, listOf(ChunkChoice(index, ChunkDelta(text))), usage),
         )
 
+    private fun tool(
+        index: Int = 0,
+        name: String? = null,
+        arguments: String,
+    ): ProviderStreamEvent.Chunk {
+        val function =
+            listOfNotNull(
+                name?.let { "name" to JsonValue.Text(it) },
+                "arguments" to JsonValue.Text(arguments),
+            ).toMap()
+        val call = JsonValue.Object(mapOf("index" to JsonValue.Number("0"), "function" to JsonValue.Object(function)))
+        val delta = ChunkDelta(extras = JsonValue.Object(mapOf("tool_calls" to JsonValue.Array(listOf(call)))))
+        return ProviderStreamEvent.Chunk(ChatChunk("chatcmpl-1", CREATED, MODEL, listOf(ChunkChoice(index, delta))))
+    }
+
     private fun usageChunk(usage: Usage = PROVIDER_USAGE): ProviderStreamEvent.Chunk =
         ProviderStreamEvent.Chunk(ChatChunk("chatcmpl-1", CREATED, MODEL, emptyList(), usage))
 
@@ -307,6 +322,89 @@ class StreamTallyTest {
 
         assertEquals(StreamOutcome.Failed(ProviderFailure.ModelNotFound), failed.summary(cancelled = false).outcome)
         assertEquals(StreamOutcome.Failed(ProviderFailure.UpstreamError), empty.summary(cancelled = false).outcome)
+    }
+
+    @Test
+    fun `tool call fragments sum to the whole call, rounded once per choice`() {
+        val tally = tally()
+
+        val events =
+            tally.feed(
+                tool(name = "get_weather", arguments = ""),
+                tool(arguments = """{"ci"""),
+                tool(arguments = """ty":"P"""),
+                tool(arguments = """aris"}"""),
+                ProviderStreamEvent.Completed,
+            )
+
+        val usage = (events.last() as ChatStreamEvent.Completed).usage
+        // ceil((11 + 16) / 4), where rounding each fragment would give 3 + 1 + 2 + 2.
+        assertEquals(TokenCount(7), usage.outputTokens)
+        assertTrue(usage.estimated)
+    }
+
+    @Test
+    fun `text and tool fragments of a choice share one rounding`() {
+        val tally = tally()
+
+        tally.feed(content("abc"), tool(name = "get_weather", arguments = """{"city":"Paris"}"""))
+
+        assertEquals(TokenCount(8), tally.summary(cancelled = true).usage.outputTokens)
+    }
+
+    @Test
+    fun `a stream and a reply with the same call estimate the same`() {
+        val function =
+            JsonValue.Object(
+                mapOf(
+                    "name" to JsonValue.Text("get_weather"),
+                    "arguments" to JsonValue.Text("""{"city":"Paris"}"""),
+                ),
+            )
+        val call = JsonValue.Object(mapOf("function" to function))
+        val whole = JsonValue.Object(mapOf("tool_calls" to JsonValue.Array(listOf(call))))
+        val reply =
+            ChatCompletion(
+                "id",
+                CREATED,
+                MODEL,
+                listOf(ChatChoice(0, AssistantMessage(null, whole), FinishReason("tool_calls"))),
+            )
+        val tally = tally()
+
+        tally.feed(tool(name = "get_weather", arguments = ""), tool(arguments = """{"city":"Paris"}"""))
+
+        assertEquals(estimator.estimate(ASKING, reply), tally.summary(cancelled = true).usage)
+    }
+
+    @Test
+    fun `tool fragments of two choices are counted apart`() {
+        val tally = tally()
+
+        tally.feed(tool(index = 0, arguments = "1"), tool(index = 1, arguments = "2"))
+
+        assertEquals(TokenCount(2), tally.summary(cancelled = true).usage.outputTokens)
+    }
+
+    @Test
+    fun `a provider's usage still wins over tool fragments`() {
+        val tally = tally()
+
+        tally.feed(tool(name = "get_weather", arguments = "{}"), usageChunk())
+
+        assertEquals(listOf(ChatStreamEvent.Completed(PROVIDER_USAGE)), tally.on(ProviderStreamEvent.Completed))
+    }
+
+    @Test
+    fun `a tool_calls delta of the wrong shape counts 0 and is forwarded`() {
+        val tally = tally()
+        val delta = ChunkDelta(extras = JsonValue.Object(mapOf("tool_calls" to JsonValue.Text("long text"))))
+        val odd = ProviderStreamEvent.Chunk(ChatChunk("chatcmpl-1", CREATED, MODEL, listOf(ChunkChoice(0, delta))))
+
+        val events = tally.on(odd)
+
+        assertEquals(listOf(ChatStreamEvent.Started(DEPLOYMENT), ChatStreamEvent.Chunk(odd.chunk)), events)
+        assertEquals(TokenCount(0), tally.summary(cancelled = true).usage.outputTokens)
     }
 
     @Test

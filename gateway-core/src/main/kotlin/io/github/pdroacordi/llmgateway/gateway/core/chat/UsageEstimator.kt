@@ -1,11 +1,26 @@
 package io.github.pdroacordi.llmgateway.gateway.core.chat
 
 import io.github.pdroacordi.llmgateway.gateway.core.embedding.EmbeddingInput
+import io.github.pdroacordi.llmgateway.gateway.core.json.JsonValue
 
 // OpenAI's rule of thumb and token-counting cookbook, as in FND-03 (ADR-GW-01-011).
 private const val CHARACTERS_PER_TOKEN = 4
 private const val TOKENS_PER_MESSAGE = 3L
 private const val TOKENS_PER_REPLY = 3L
+
+/** Characters of `function.name` and `function.arguments` in a `tool_calls` member; other shapes count 0. */
+internal fun toolCallCharacters(extras: JsonValue.Object): Long {
+    val calls = extras.members["tool_calls"] as? JsonValue.Array ?: return 0
+    return calls.items.sumOf { call ->
+        val function = (call as? JsonValue.Object)?.members?.get("function") as? JsonValue.Object
+        textLength(function, "name") + textLength(function, "arguments")
+    }
+}
+
+private fun textLength(
+    function: JsonValue.Object?,
+    member: String,
+): Long = (function?.members?.get(member) as? JsonValue.Text)?.value?.length?.toLong() ?: 0
 
 /** The count used when a provider omits usage; a lower bound when opaque parts such as images are present. */
 class UsageEstimator {
@@ -31,7 +46,7 @@ class UsageEstimator {
                 it.message.content
                     .orEmpty()
                     .length
-                    .toLong()
+                    .toLong() + toolCallCharacters(it.message.extras)
             },
         )
 

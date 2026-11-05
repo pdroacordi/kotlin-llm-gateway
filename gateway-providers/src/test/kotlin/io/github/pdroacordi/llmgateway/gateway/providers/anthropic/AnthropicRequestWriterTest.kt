@@ -532,6 +532,50 @@ class AnthropicRequestWriterTest {
     }
 
     @Test
+    fun `json_schema goes out as output_config, on write and on writeStream`() {
+        val written = """{"format":{"type":"json_schema","schema":$SCHEMA}}"""
+        val stream = (writer.writeStream(call(extras = JSON_SCHEMA)) as WrittenRequest.Body).tree
+
+        assertEquals(written, mapper.writeValueAsString(body(extras = JSON_SCHEMA).get("output_config")))
+        assertEquals(written, mapper.writeValueAsString(stream.get("output_config")))
+        assertNull(stream.get("response_format"))
+    }
+
+    @Test
+    fun `json_schema with tools carries both`() {
+        val body = body(extras = JSON_SCHEMA.dropLast(1) + ""","tools":[$TOOL]}""")
+
+        assertEquals("g", body.at("/tools/0/name").stringValue())
+        assertEquals("json_schema", body.at("/output_config/format/type").stringValue())
+    }
+
+    @Test
+    fun `text puts no output_config in the body, on write and on writeStream`() {
+        val text = """{"response_format":{"type":"text"}}"""
+        val stream = (writer.writeStream(call(extras = text)) as WrittenRequest.Body).tree
+
+        assertNull(body(extras = text).get("output_config"))
+        assertNull(stream.get("output_config"))
+    }
+
+    @Test
+    fun `a refused format is a refusal on write and on writeStream`() {
+        val json = """{"response_format":{"type":"json_object"}}"""
+        val refusal = ProviderFailure.UnsupportedByProvider("unsupported_value", "response_format.type")
+
+        assertEquals(refusal, refused(extras = json))
+        assertEquals(refusal, (writer.writeStream(call(extras = json)) as WrittenRequest.Refused).failure)
+    }
+
+    @Test
+    fun `client output_config is refused beside a good response_format`() {
+        assertEquals(
+            ProviderFailure.UnsupportedByProvider("unsupported_parameter", "output_config"),
+            refused(extras = JSON_SCHEMA.dropLast(1) + ""","output_config":{"format":{}}}"""),
+        )
+    }
+
+    @Test
     fun `the outcome does not depend on member order`() {
         val one = """{"temperature":1,"tools":[$TOOL],"tool_choice":"required","stop":"x"}"""
         val two = """{"stop":"x","tool_choice":"required","tools":[$TOOL],"temperature":1}"""
@@ -541,6 +585,8 @@ class AnthropicRequestWriterTest {
 
     private companion object {
         const val TOOL = """{"type":"function","function":{"name":"g"}}"""
+        const val SCHEMA = """{"type":"object","additionalProperties":false}"""
+        const val JSON_SCHEMA = """{"response_format":{"type":"json_schema","json_schema":{"schema":$SCHEMA}}}"""
         val REQUEST_ID = RequestId(Uuid.parse("01890a5d-ac96-774b-bcce-b302099a8057"))
         val DEPLOYMENT = Deployment(DeploymentId("anthropic"), ProviderId("anthropic"), ModelName("provider-model"))
     }

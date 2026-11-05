@@ -7,6 +7,8 @@ import com.openai.errors.InternalServerException
 import com.openai.errors.NotFoundException
 import com.openai.errors.RateLimitException
 import com.openai.errors.UnauthorizedException
+import com.openai.helpers.ChatCompletionAccumulator
+import com.openai.models.chat.completions.ChatCompletion
 import com.openai.models.chat.completions.ChatCompletionCreateParams
 import io.github.pdroacordi.llmgateway.gateway.core.team.TestKeys
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -54,6 +56,47 @@ class OpenAiSdkContractTest(
                 .isPresent,
         )
         assertTrue(completion.usage().isPresent)
+    }
+
+    private fun ChatCompletion.calls(): List<Triple<String, String, String>> =
+        choices()
+            .single()
+            .message()
+            .toolCalls()
+            .orElseThrow()
+            .map { call ->
+                val function = call.asFunction()
+                Triple(function.id(), function.function().name(), function.function().arguments())
+            }
+
+    @Test
+    fun `tool calls pass validate, and the accumulator reads the same tool_calls as the reply`() {
+        scenario(TOOLS)
+        val accumulator = ChatCompletionAccumulator.create()
+
+        val completion = client.chat().completions().create(params)
+        client
+            .chat()
+            .completions()
+            .createStreaming(params)
+            .use { stream ->
+                stream.stream().forEach {
+                    it.validate()
+                    accumulator.accumulate(it)
+                }
+            }
+
+        completion.validate()
+        assertEquals(2, completion.calls().size)
+        assertEquals(completion.calls(), accumulator.chatCompletion().calls())
+        assertEquals(
+            ChatCompletion.Choice.FinishReason.TOOL_CALLS,
+            accumulator
+                .chatCompletion()
+                .choices()
+                .single()
+                .finishReason(),
+        )
     }
 
     @Test
@@ -120,5 +163,12 @@ class OpenAiSdkContractTest(
         assertTrue(
             context.getBeanNamesForType(com.fasterxml.jackson.databind.ObjectMapper::class.java).isEmpty(),
         )
+    }
+
+    private companion object {
+        const val TOOLS =
+            """{"otherwise":{"content":{"mode":"fixed","text":"","toolCalls":[
+            {"id":"call_1","name":"get_weather","input":{"city":"Paris"},"chunkChars":3},
+            {"id":"call_2","name":"get_time","input":{"zone":"CET"},"chunkChars":3}]}}}"""
     }
 }

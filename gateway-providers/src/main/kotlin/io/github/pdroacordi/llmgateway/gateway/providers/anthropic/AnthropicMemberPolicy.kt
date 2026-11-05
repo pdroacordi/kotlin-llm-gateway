@@ -47,6 +47,7 @@ internal object AnthropicMemberPolicy {
                 "parallel_tool_calls",
                 "safety_identifier",
                 "user",
+                "response_format",
             ).forEach { put(it, MemberRule.Translated) }
             listOf("temperature", "top_p", "top_k", "cache_control").forEach { put(it, MemberRule.Forward) }
             listOf(
@@ -67,7 +68,6 @@ internal object AnthropicMemberPolicy {
                 "top_logprobs",
                 "seed",
                 "logit_bias",
-                "response_format",
                 "audio",
                 "prediction",
                 "moderation",
